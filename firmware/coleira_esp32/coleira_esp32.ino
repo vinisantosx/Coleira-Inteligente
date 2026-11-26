@@ -14,6 +14,13 @@
     pets/{PET_ID}        <- estado atual (escrito pela coleira)
     config/area          <- casa e raio (escrito pelo site)
     perfis/{PET_ID}      <- campo "perdido" (modo pet perdido, ligado pelo site)
+    saude/{PET_ID}_{data} <- resumo do dia: distancia, minutos ativos, batimento em repouso
+
+  Saude comparada com o proprio pet:
+    - "repouso" = coleira no pet e quase parado por alguns minutos (pelo GPS)
+    - a cada dia com pelo menos 30 min de repouso medido, a coleira atualiza o
+      "normal" do pet (media movel de ~7 dias, guardada na memoria flash)
+    - depois de 3 dias aprendendo, avisa quando o batimento em repouso foge do normal dele
     alertas/{auto}       <- historico de eventos (escrito pela coleira)
 */
 #include <WiFi.h>
@@ -25,6 +32,7 @@
 #include "MAX30105.h"
 #include "heartRate.h"
 #include "time.h"
+#include <Preferences.h>
 #include "config.h"
 
 // ------------------------------------------------ estado compartilhado
@@ -38,14 +46,29 @@ struct Estado {
   double distancia = 0;
   int    bateriaPct = 100;
   bool   perdido = false;      // modo pet perdido ligado pelo tutor no site
+  int    bpmRepouso = 0;       // media dos ultimos minutos em repouso
+  bool   emRepouso = false;
+  int8_t saudeAlerta = 0;      // 1 = acima do normal, -1 = abaixo, 0 = normal
 };
+struct Dia {                   // acumulado do dia (vai para saude/{PET_ID}_{data})
+  char   data[11] = "";        // "AAAA-MM-DD" na hora local; vazio ate o NTP sincronizar
+  double distanciaM = 0;
+  int    minutosAtivos = 0;
+  double bpmRepousoSoma = 0;
+  int    bpmRepousoN = 0, bpmRepousoMin = 0, bpmRepousoMax = 0;
+};
+struct Base { float media = 0, var = 0; int dias = 0; };   // o "normal" do pet
 struct Area { double lat = CASA_LAT_PADRAO, lng = CASA_LNG_PADRAO, raio = RAIO_PADRAO_M; };
 
-enum TipoEvento : uint8_t { SAIU_AREA, VOLTOU_AREA, COLEIRA_REMOVIDA, COLEIRA_COLOCADA, BATERIA_BAIXA };
+enum TipoEvento : uint8_t { SAIU_AREA, VOLTOU_AREA, COLEIRA_REMOVIDA, COLEIRA_COLOCADA, BATERIA_BAIXA,
+                           BATIMENTO_ALTO, BATIMENTO_BAIXO };
 struct Evento { TipoEvento tipo; double lat, lng; };
 
 Estado estado;
 Area area;
+Dia dia;
+Base base;
+Preferences prefs;
 SemaphoreHandle_t trava;
 QueueHandle_t filaEventos;
 
@@ -61,6 +84,8 @@ byte leituras[N_MEDIA];
 byte posLeitura = 0, qtdLeituras = 0;
 unsigned long ultimoBatimento = 0;
 int bpmMedio = 0;
+double somaBpmMin = 0;   // media do batimento dentro de cada minuto
+int nBpmMin = 0;
 
 // ------------------------------------------------ util
 double distanciaMetros(double lat1, double lng1, double lat2, double lng2) {
@@ -149,8 +174,72 @@ void lerSensorCardiaco() {
     ultPub = millis();
     xSemaphoreTake(trava, portMAX_DELAY);
     estado.bpm = bpmMedio;
+    if (bpmMedio > 0) { somaBpmMin += bpmMedio; nBpmMin++; }
     xSemaphoreGive(trava);
   }
+}
+
+// ------------------------------------------------ saude: roda uma vez por minuto
+void avaliarMinuto() {
+  static unsigned long ult = 0;
+  if (millis() - ult < 60000) return;
+  ult = millis();
+  static double latAnt = 0, lngAnt = 0;
+  static bool temAnt = false;
+  static int minutosParado = 0;
+  static float janela[10];
+  static byte nJan = 0, posJan = 0;
+
+  xSemaphoreTake(trava, portMAX_DELAY);
+  bool fix = estado.gpsFix, noPet = estado.coleiraNoPet;
+  double la = estado.lat, ln = estado.lng;
+  Base b = base;
+  int bpmMin = nBpmMin >= 20 ? (int)lround(somaBpmMin / nBpmMin) : 0;   // >= 10 s de leitura no minuto
+  somaBpmMin = 0; nBpmMin = 0;
+  xSemaphoreGive(trava);
+
+  // quanto o pet andou neste minuto (sem GPS, ex.: dentro de casa, conta como parado)
+  double movido = 0;
+  if (fix) {
+    if (temAnt) movido = distanciaMetros(latAnt, lngAnt, la, ln);
+    latAnt = la; lngAnt = ln; temAnt = true;
+  } else temAnt = false;
+  if (movido > 2000) movido = 0;                        // salto do GPS, nao foi o pet
+  bool ativo = movido > MOVIMENTO_ATIVO_M;
+  if (movido > MOVIMENTO_RUIDO_M) minutosParado = 0; else minutosParado++;
+  bool repouso = noPet && minutosParado >= MINUTOS_PARA_REPOUSO;
+
+  if (repouso && bpmMin > 0) {
+    janela[posJan] = bpmMin; posJan = (posJan + 1) % 10;
+    if (nJan < 10) nJan++;
+  } else if (!repouso) { nJan = 0; posJan = 0; }        // compara so repouso continuo
+  float mediaJan = 0;
+  for (byte i = 0; i < nJan; i++) mediaJan += janela[i];
+  if (nJan) mediaJan /= nJan;
+
+  int8_t alerta = 0;
+  bool podeAvaliar = b.dias >= DIAS_PARA_APRENDER && nJan >= 8;
+  if (podeAvaliar) {
+    float limite = max(max(0.20f * b.media, 3.0f * sqrtf(b.var)), 12.0f);
+    if (mediaJan > b.media + limite) alerta = 1;
+    else if (mediaJan < b.media - limite) alerta = -1;
+  }
+
+  xSemaphoreTake(trava, portMAX_DELAY);
+  if (movido > MOVIMENTO_RUIDO_M) dia.distanciaM += movido;
+  if (ativo) dia.minutosAtivos++;
+  if (repouso && bpmMin > 0) {
+    dia.bpmRepousoSoma += bpmMin; dia.bpmRepousoN++;
+    if (!dia.bpmRepousoMin || bpmMin < dia.bpmRepousoMin) dia.bpmRepousoMin = bpmMin;
+    if (bpmMin > dia.bpmRepousoMax) dia.bpmRepousoMax = bpmMin;
+  }
+  estado.emRepouso = repouso;
+  estado.bpmRepouso = nJan ? (int)lround(mediaJan) : 0;
+  int8_t antes = estado.saudeAlerta;
+  if (podeAvaliar) estado.saudeAlerta = alerta;         // so muda com 8+ minutos de repouso medido
+  xSemaphoreGive(trava);
+
+  if (podeAvaliar && alerta != 0 && antes != alerta) enviarEvento(alerta > 0 ? BATIMENTO_ALTO : BATIMENTO_BAIXO, la, ln);
 }
 
 void lerGPS() {
@@ -201,7 +290,7 @@ bool conectarWiFi() {
   WiFi.begin(WIFI_SSID, WIFI_SENHA);
   for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) vTaskDelay(pdMS_TO_TICKS(250));
   if (WiFi.status() == WL_CONNECTED) {
-    configTime(0, 0, "pool.ntp.org", "time.google.com");
+    configTime(FUSO_HORARIO_S, 0, "pool.ntp.org", "time.google.com");   // localtime = hora do Brasil
     Serial.printf("[wifi] conectado, IP %s\n", WiFi.localIP().toString().c_str());
     return true;
   }
@@ -279,6 +368,15 @@ void publicarEstado(const Estado &e) {
   f["distancia"]["doubleValue"] = round(e.distancia);
   f["bateria"]["integerValue"] = String(e.bateriaPct);
   f["modoPerdido"]["booleanValue"] = e.perdido;
+  f["bpmRepouso"]["integerValue"] = String(e.bpmRepouso);
+  f["emRepouso"]["booleanValue"] = e.emRepouso;
+  f["saudeAlerta"]["stringValue"] = e.saudeAlerta > 0 ? "alto" : e.saudeAlerta < 0 ? "baixo" : "";
+  xSemaphoreTake(trava, portMAX_DELAY);
+  Base b = base;
+  xSemaphoreGive(trava);
+  f["baseRepouso"]["integerValue"] = String((int)lround(b.media));
+  f["baseDesvio"]["doubleValue"] = round(sqrtf(b.var) * 10) / 10.0;
+  f["baseDias"]["integerValue"] = String(b.dias);
   String iso = agoraISO();
   if (iso.length()) f["atualizadoEm"]["timestampValue"] = iso;
   String corpo; serializeJson(doc, corpo);
@@ -293,11 +391,14 @@ const char *textoEvento(TipoEvento t) {
     case VOLTOU_AREA:      return "voltou para a area segura";
     case COLEIRA_REMOVIDA: return "esta sem a coleira (coleira removida)";
     case COLEIRA_COLOCADA: return "esta com a coleira de novo";
+    case BATIMENTO_ALTO:   return "esta com o batimento em repouso acima do normal dele";
+    case BATIMENTO_BAIXO:  return "esta com o batimento em repouso abaixo do normal dele";
     default:               return "esta com a bateria da coleira baixa";
   }
 }
 const char *codigoEvento(TipoEvento t) {
-  const char *c[] = {"saiu_area", "voltou_area", "coleira_removida", "coleira_colocada", "bateria_baixa"};
+  const char *c[] = {"saiu_area", "voltou_area", "coleira_removida", "coleira_colocada", "bateria_baixa",
+                     "batimento_alto", "batimento_baixo"};
   return c[t];
 }
 
@@ -316,7 +417,8 @@ void tratarEvento(const Evento &ev) {
   Serial.printf("[alerta] %s -> %d\n", codigoEvento(ev.tipo), cod);
 
 #if WHATSAPP_ATIVO
-  if (ev.tipo == SAIU_AREA || ev.tipo == COLEIRA_REMOVIDA || ev.tipo == BATERIA_BAIXA) {
+  if (ev.tipo == SAIU_AREA || ev.tipo == COLEIRA_REMOVIDA || ev.tipo == BATERIA_BAIXA ||
+      ev.tipo == BATIMENTO_ALTO || ev.tipo == BATIMENTO_BAIXO) {
     String msg = String("Alerta da coleira: ") + PET_NOME + " " + textoEvento(ev.tipo) + ".";
     if (ev.lat != 0) msg += "\nLocalizacao: https://maps.google.com/?q=" + String(ev.lat, 6) + "," + String(ev.lng, 6);
     String url = "https://api.callmebot.com/whatsapp.php?phone=" + urlEncode(WHATSAPP_TELEFONE) +
@@ -325,6 +427,111 @@ void tratarEvento(const Evento &ev) {
     Serial.printf("[whatsapp] %d\n", c);
   }
 #endif
+}
+
+// ------------------------------------------------ saude: resumo do dia e o "normal" do pet
+String dataLocal() {
+  time_t t = time(nullptr);
+  if (t < 1700000000) return "";
+  struct tm l; localtime_r(&t, &l);
+  char b[11]; strftime(b, sizeof(b), "%Y-%m-%d", &l);
+  return String(b);
+}
+
+void carregarBase() {
+  prefs.begin("saude", false);
+  base.media = prefs.getFloat("media", 0);
+  base.var = prefs.getFloat("var", 0);
+  base.dias = prefs.getInt("dias", 0);
+  Serial.printf("[saude] normal do pet: %.0f bpm (desvio %.1f, %d dias)\n", base.media, sqrtf(base.var), base.dias);
+}
+
+// fecha um dia: se teve repouso suficiente, ajusta o normal do pet (media movel de ~7 dias)
+void aprenderDia(const Dia &d) {
+  if (d.bpmRepousoN < MIN_MINUTOS_REPOUSO_DIA) {
+    Serial.printf("[saude] %s: so %d min de repouso medido, nao entra no aprendizado\n", d.data, d.bpmRepousoN);
+    return;
+  }
+  float m = d.bpmRepousoSoma / d.bpmRepousoN;
+  xSemaphoreTake(trava, portMAX_DELAY);
+  if (base.dias == 0) { base.media = m; base.var = 25; }
+  else {
+    float a = 1.0f / min(base.dias + 1, 7);
+    float delta = m - base.media;
+    base.media += a * delta;
+    base.var = (1 - a) * (base.var + a * delta * delta);
+  }
+  base.dias++;
+  Base b = base;
+  xSemaphoreGive(trava);
+  prefs.putFloat("media", b.media);
+  prefs.putFloat("var", b.var);
+  prefs.putInt("dias", b.dias);
+  Serial.printf("[saude] dia %s: repouso %.0f bpm -> normal agora %.0f bpm (%d dias)\n", d.data, m, b.media, b.dias);
+}
+
+String urlDia(const char *data) { return urlFirestore(String("saude/") + PET_ID + "_" + data); }
+
+void publicarDia(const Dia &d) {
+  if (!d.data[0]) return;
+  JsonDocument doc;
+  JsonObject f = doc["fields"].to<JsonObject>();
+  f["pet"]["stringValue"] = PET_ID;
+  f["data"]["stringValue"] = d.data;
+  f["distanciaM"]["integerValue"] = String((long)lround(d.distanciaM));
+  f["minutosAtivos"]["integerValue"] = String(d.minutosAtivos);
+  f["bpmRepousoSoma"]["integerValue"] = String((long)lround(d.bpmRepousoSoma));
+  f["bpmRepousoN"]["integerValue"] = String(d.bpmRepousoN);
+  f["bpmRepousoMin"]["integerValue"] = String(d.bpmRepousoMin);
+  f["bpmRepousoMax"]["integerValue"] = String(d.bpmRepousoMax);
+  String iso = agoraISO();
+  if (iso.length()) f["atualizadoEm"]["timestampValue"] = iso;
+  String corpo; serializeJson(doc, corpo);
+  int cod = requisicao("PATCH", urlDia(d.data), corpo);
+  Serial.printf("[saude] %s: %.0f m, %d min ativos, repouso %d min -> %d\n", d.data, d.distanciaM, d.minutosAtivos, d.bpmRepousoN, cod);
+}
+
+// se a coleira reiniciou no meio do dia, continua somando de onde parou
+void retomarDia(const String &data) {
+  String resp;
+  if (requisicao("GET", urlDia(data.c_str()), "", &resp) != 200) return;
+  JsonDocument doc;
+  if (deserializeJson(doc, resp)) return;
+  JsonObjectConst f = doc["fields"];
+  auto num = [&](const char *k) { double v = lerNumero(f[k]); return isnan(v) ? 0.0 : v; };
+  xSemaphoreTake(trava, portMAX_DELAY);
+  dia.distanciaM += num("distanciaM");
+  dia.minutosAtivos += (int)num("minutosAtivos");
+  dia.bpmRepousoSoma += num("bpmRepousoSoma");
+  dia.bpmRepousoN += (int)num("bpmRepousoN");
+  int mn = (int)num("bpmRepousoMin"), mx = (int)num("bpmRepousoMax");
+  if (mn && (!dia.bpmRepousoMin || mn < dia.bpmRepousoMin)) dia.bpmRepousoMin = mn;
+  if (mx > dia.bpmRepousoMax) dia.bpmRepousoMax = mx;
+  xSemaphoreGive(trava);
+  Serial.printf("[saude] retomando %s do Firebase\n", data.c_str());
+}
+
+void cuidarDoDia() {
+  static unsigned long ultEnvio = 0;
+  String hoje = dataLocal();
+  if (!hoje.length()) return;
+  xSemaphoreTake(trava, portMAX_DELAY);
+  bool vazio = !dia.data[0];
+  bool virou = !vazio && hoje != dia.data;
+  Dia anterior = dia;
+  if (vazio) strncpy(dia.data, hoje.c_str(), sizeof(dia.data));
+  if (virou) { dia = Dia(); strncpy(dia.data, hoje.c_str(), sizeof(dia.data)); }
+  xSemaphoreGive(trava);
+
+  if (vazio) retomarDia(hoje);
+  if (virou) { publicarDia(anterior); aprenderDia(anterior); }
+  if (virou || ultEnvio == 0 || millis() - ultEnvio > INTERVALO_SAUDE_MS) {
+    xSemaphoreTake(trava, portMAX_DELAY);
+    Dia copia = dia;
+    xSemaphoreGive(trava);
+    publicarDia(copia);
+    ultEnvio = millis();
+  }
 }
 
 void tarefaRede(void *) {
@@ -337,6 +544,8 @@ void tarefaRede(void *) {
 
     Evento ev;
     while (xQueueReceive(filaEventos, &ev, 0) == pdTRUE) { tratarEvento(ev); ultEnvio = 0; }
+
+    cuidarDoDia();
 
     xSemaphoreTake(trava, portMAX_DELAY);
     Estado copia = estado;
@@ -359,6 +568,7 @@ void setup() {
 
   trava = xSemaphoreCreateMutex();
   filaEventos = xQueueCreate(10, sizeof(Evento));
+  carregarBase();
 
   SerialGPS.begin(9600, SERIAL_8N1, PINO_GPS_RX, PINO_GPS_TX);
 
@@ -383,6 +593,7 @@ void loop() {
   lerGPS();
   lerSensorCardiaco();
   lerBateria();
+  avaliarMinuto();
   atualizarLED();
 
   // depuracao: mostra o IR para calibrar LIMIAR_PRESENCA_IR

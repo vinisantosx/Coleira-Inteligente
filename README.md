@@ -59,6 +59,29 @@ Novas coleções: `perfis/{pet}` (perfil público e o campo `perdido`) e avisos 
 
 **Privacidade:** a página do QR é pública e mostra o telefone cadastrado. Coloque só o número que você aceita divulgar.
 
+## Saúde comparada com o próprio pet
+
+A coleira aprende como é o batimento em repouso **daquele** pet, em vez de usar limites fixos.
+
+- **Repouso:** a coleira está no pet e ele ficou quase parado por 3 minutos, pelo GPS. Sem GPS, como dentro de casa, ela considera que ele está parado.
+- **Minuto ativo:** um minuto em que ele andou mais de 25 m.
+- **Distância:** a soma dos deslocamentos maiores que 8 m por minuto. Abaixo disso é tremida do GPS.
+- **Resumo do dia:** a cada 5 minutos a coleira envia o resumo para `saude/{pet}_{AAAA-MM-DD}`.
+- **Aprendizado:** à meia-noite, se o dia teve pelo menos 30 minutos de repouso medido, a média entra no "normal" do pet. É uma média móvel de cerca de 7 dias, guardada na memória da ESP32, então não se perde ao desligar.
+- **Alerta:** depois de 3 dias aprendendo, a coleira avisa (site e WhatsApp) quando o batimento em repouso fica, por 8 a 10 minutos, mais de 20% acima ou abaixo do normal. A margem é maior se o pet costuma variar muito.
+
+No site, a seção **Saúde e atividade** mostra:
+- o batimento em repouso de agora contra a faixa normal dele;
+- a atividade de hoje contra um dia normal;
+- os gráficos dos últimos 14 dias, com os dias mais parados em laranja;
+- um resumo em linguagem simples do que mudou.
+
+Para testar sem hardware, use a área de testes: "Gerar 14 dias de histórico" e "Batimento fora do normal". Na simulação, cada segundo conta como 1 minuto da coleira, para acelerar a demonstração.
+
+**Limitações:**
+- É acompanhamento de tendência, não diagnóstico: o sensor é óptico e o pelo atrapalha a leitura.
+- Sem acelerômetro, o repouso é deduzido pelo GPS. Um MPU6050 deixaria a detecção de repouso, sono e brincadeira muito mais precisa.
+
 ## 3. Firmware (Arduino IDE)
 
 1. Instale a placa **esp32** (Espressif) e escolha "ESP32 Dev Module".

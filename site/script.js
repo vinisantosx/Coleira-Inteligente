@@ -3,6 +3,7 @@ import {
   configurado, abrirFirestore, PERFIL_PADRAO, perfilLocal, salvarPerfilLocal, avistamentosLocais,
   adicionarAvistamentoLocal, CHAVE_PERFIL, CHAVE_AVISTAMENTOS, telefoneWhatsApp, telefoneBonito, urlPaginaQR, reduzirFoto
 } from './perfil-dados.js';
+import { analisar, graficoRepouso, graficoAtividade, historicoExemplo, dataLocal, diasAtras } from './saude.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,6 +22,9 @@ let perfil = configurado ? { ...PERFIL_PADRAO } : perfilLocal();   // nome, foto
 let formSujo = false, fotoNova;                                    // edição do perfil ainda não salva
 let idsAvistados = null;                                           // avistamentos já vistos (para avisar só os novos)
 const nomePet = () => perfil.nome || PET_NOME;
+let diasSaude = {};                                                // resumos diários: { 'AAAA-MM-DD': {...} }
+let analiseSaude = null;
+const CHAVE_SAUDE = 'coleira-saude-' + PET_ID;
 
 
 const areaAtual = () => areaEditada || area;
@@ -160,6 +164,7 @@ function renderEstado(e, novo = true) {
 
   atualizarStatus(e, fora, dist);
   if (novo) verificarMudancas(e, fora);
+  if (novo && Date.now() - ultimoRenderSaude > 3000) renderSaude();
 }
 
 // rastro de patinhas apontando para onde o pet andou
@@ -283,7 +288,7 @@ function desenharBpm() {
 const TIPO = {
   saiu_area: ['grave', 'i-corre'], coleira_removida: ['grave', 'i-tag'], bateria_baixa: ['aviso', 'i-bateria'],
   voltou_area: ['bom', 'i-casa'], coleira_colocada: ['bom', 'i-check'],
-  avistamento: ['achado', 'i-olho'], modo_perdido: ['grave', 'i-megafone'], pet_encontrado: ['bom', 'i-check']
+  avistamento: ['achado', 'i-olho'], batimento_alto: ['aviso', 'i-coracao'], batimento_baixo: ['aviso', 'i-coracao'], modo_perdido: ['grave', 'i-megafone'], pet_encontrado: ['bom', 'i-check']
 };
 const chaveAlerta = (a) => a.id || `${a.data?.getTime?.()}|${a.lat}|${a.mensagem}`;
 const NS = 'http://www.w3.org/2000/svg';
@@ -574,12 +579,35 @@ async function passoSimulador(forcar = false) {
   const dist = map.distance([area.lat, area.lng], [sim.lat, sim.lng]);
   const dentro = dist <= area.raio;
   const base = dentro ? 92 : 138;
+
+  // saúde (simulação acelerada: cada segundo conta como 1 minuto da coleira)
+  const hoje = diaDeHoje(true);
+  const mov = sim.ultPos ? map.distance(sim.ultPos, [sim.lat, sim.lng]) : 0;
+  sim.ultPos = [sim.lat, sim.lng];
+  if (mov > 1) { hoje.distanciaM += Math.round(mov); hoje.minutosAtivos += 1; sim.parado = 0; } else sim.parado = (sim.parado || 0) + 1;
+  const repouso = sim.coleiraNoPet && sim.parado >= 3;
+  let bpm = sim.coleiraNoPet ? Math.round(base + (Math.random() - 0.5) * 10) : 0;
+  if (repouso) {
+    bpm = sim.coracao > 0 ? Math.round(118 + Math.random() * 6) : Math.round(86 + Math.random() * 6);
+    sim.janela = [...(sim.janela || []), bpm].slice(-8);
+    if (sim.parado % 4 === 0) { hoje.bpmRepousoSoma += bpm; hoje.bpmRepousoN += 1; }
+  } else sim.janela = [];
+  if (sim.coracao > 0) sim.coracao--;
+  const bpmRepouso = sim.janela.length >= 3 ? Math.round(sim.janela.reduce((a, b) => a + b, 0) / sim.janela.length) : 0;
+
   const estado = {
     nome: nomePet(), lat: sim.lat, lng: sim.lng, gpsFix: true, satelites: 8,
-    batimentos: sim.coleiraNoPet ? Math.round(base + (Math.random() - 0.5) * 10) : 0,
+    batimentos: bpm,
     coleiraNoPet: sim.coleiraNoPet, dentroArea: dentro, distancia: Math.round(dist),
-    bateria: Math.round(sim.bateria), atualizadoEm: new Date()
+    bateria: Math.round(sim.bateria), atualizadoEm: new Date(),
+    bpmRepouso, emRepouso: repouso, saudeAlerta: sim.coracao > 0 && bpmRepouso > 105 ? 'alto' : ''
   };
+  if (estado.saudeAlerta && !sim.avisouCoracao) {
+    sim.avisouCoracao = true;
+    await registrarAlerta('batimento_alto', `${nomePet()} está com o batimento em repouso acima do normal dele`);
+  }
+  if (!sim.coracao) sim.avisouCoracao = false;
+  await salvarDiaSim(hoje);
   sim.bateria = Math.max(5, sim.bateria - 0.01);
 
   if (dentro !== sim.dentro) {
@@ -596,6 +624,14 @@ async function passoSimulador(forcar = false) {
   } else {
     renderEstado(estado);
   }
+}
+
+let ultimoSalvoSaude = 0;
+async function salvarDiaSim(hoje, forcar = false) {
+  if (!forcar && Date.now() - ultimoSalvoSaude < (db ? 10000 : 3000)) return;
+  ultimoSalvoSaude = Date.now();
+  if (db) await fs.setDoc(fs.doc(db, 'saude', `${PET_ID}_${hoje.data}`), { pet: PET_ID, ...hoje, atualizadoEm: fs.serverTimestamp() });
+  else { try { localStorage.setItem(CHAVE_SAUDE, JSON.stringify(diasSaude)); } catch { /* ok */ } renderSaude(); }
 }
 
 async function registrarAlerta(tipo, mensagem, pos = sim) {
@@ -644,6 +680,12 @@ document.querySelectorAll('[data-sim]').forEach((b) => b.addEventListener('click
   }
   if (acao === 'passeio') { sim.rota = sim.rota ? null : rotaFuga(); }
   if (acao === 'achado') await simularAvistamento();
+  if (acao === 'coracao') {
+    sim.rota = null; sim.lat = area.lat + 0.00005; sim.lng = area.lng - 0.00015; sim.ultPos = [sim.lat, sim.lng];
+    sim.coleiraNoPet = true; sim.parado = 3; sim.coracao = 25;
+    mostrarAviso('Simulando batimento acima do normal em repouso por ~25 s', 'Ver saúde', () => irPara('saude', true), 6000);
+  }
+  if (acao === 'historico') await gerarHistoricoExemplo();
   marcarPasseio(!!sim.rota);
   passoSimulador(true).catch(console.error);
 }));
@@ -810,8 +852,113 @@ window.addEventListener('storage', (ev) => {
   if (ev.key === CHAVE_PERFIL) { perfil = perfilLocal(); aplicarPerfil(); }
 });
 
+// ============================================================ saúde e atividade
+const vazioDia = (data) => ({ data, minutosAtivos: 0, distanciaM: 0, bpmRepousoSoma: 0, bpmRepousoN: 0 });
+function diaDeHoje(criar = false) {
+  const hoje = dataLocal();
+  if (!diasSaude[hoje] && criar) diasSaude[hoje] = vazioDia(hoje);
+  return diasSaude[hoje] || vazioDia(hoje);
+}
+const numero = (v) => (v == null || v === '' ? 0 : +v);
+function normalizarDia(x) {
+  return {
+    data: x.data, minutosAtivos: numero(x.minutosAtivos), distanciaM: numero(x.distanciaM),
+    bpmRepousoSoma: numero(x.bpmRepousoSoma), bpmRepousoN: numero(x.bpmRepousoN)
+  };
+}
+
+function carregarSaudeLocal() {
+  try { diasSaude = JSON.parse(localStorage.getItem(CHAVE_SAUDE)) || {}; } catch { diasSaude = {}; }
+  if (!Object.keys(diasSaude).length) {
+    historicoExemplo().forEach((d) => { diasSaude[d.data] = d; });
+    const h = vazioDia(dataLocal());
+    Object.assign(h, { minutosAtivos: 18, distanciaM: 820, bpmRepousoSoma: 88 * 25, bpmRepousoN: 25 });
+    diasSaude[h.data] = h;
+  }
+}
+
+async function gerarHistoricoExemplo() {
+  const lista = historicoExemplo();
+  if (db) {
+    await Promise.all(lista.map((d) => fs.setDoc(fs.doc(db, 'saude', `${PET_ID}_${d.data}`), { pet: PET_ID, ...d, exemplo: true })));
+  } else {
+    lista.forEach((d) => { diasSaude[d.data] = d; });
+    try { localStorage.setItem(CHAVE_SAUDE, JSON.stringify(diasSaude)); } catch { /* ok */ }
+    renderSaude();
+  }
+  mostrarAviso('Histórico de exemplo dos últimos 13 dias criado', 'Ver saúde', () => irPara('saude', true), 6000);
+}
+
+const fmtDist = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(m)} m`);
+const CHIP = { aprendendo: 'Aprendendo', 'sem-dados': 'Sem repouso hoje', normal: 'Normal dele', alto: 'Acima do normal', baixo: 'Abaixo do normal' };
+const ICONE_PERCEBIDO = { bom: 'i-check', aviso: 'i-sino', alerta: 'i-coracao', info: 'i-pata' };
+let ultimoRenderSaude = 0;
+
+function renderSaude() {
+  ultimoRenderSaude = Date.now();
+  const hoje = diaDeHoje();
+  const an = analisar({ dias: Object.values(diasSaude), hoje, estado: ultimoEstado, nome: nomePet() });
+  analiseSaude = an;
+  const problema = an.statusBpm === 'alto' || an.statusBpm === 'baixo';
+
+  // batimento em repouso x faixa normal
+  $('cartaoSaudeBpm').className = 'cartao saude-bpm ' + an.statusBpm;
+  $('sChip').className = 'chip ' + an.statusBpm;
+  $('sChip').textContent = CHIP[an.statusBpm];
+  $('sRepouso').textContent = an.referencia != null ? Math.round(an.referencia) : '--';
+  $('sRepousoRotulo').textContent = an.agora ? 'bpm em repouso agora' : an.repousoHoje ? 'bpm em repouso hoje' : 'bpm';
+  const media = an.media || 90, lim = an.limite || 18;
+  const lo = media - lim * 2, hi = media + lim * 2, pos = (v) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+  $('sFaixaNormal').style.left = (an.faixa ? pos(an.faixa[0]) : 25) + '%';
+  $('sFaixaNormal').style.width = (an.faixa ? pos(an.faixa[1]) - pos(an.faixa[0]) : 50) + '%';
+  $('sFaixaMarca').hidden = an.referencia == null;
+  if (an.referencia != null) $('sFaixaMarca').style.left = pos(an.referencia) + '%';
+  $('sFaixaMin').textContent = an.faixa && !an.aprendendo ? an.faixa[0] : '';
+  $('sFaixaMax').textContent = an.faixa && !an.aprendendo ? an.faixa[1] : '';
+  $('sFaixaTexto').textContent = an.aprendendo ? 'normal ainda em aprendizado' : `normal de ${nomePet()}`;
+  $('sBase').textContent = an.aprendendo
+    ? `Aprendendo: ${an.nDias || 0} de 3 dias com repouso suficiente.`
+    : `Normal aprendido ${an.fonte === 'coleira' ? 'pela coleira' : 'pelo histórico'} em ${an.nDias} dias: cerca de ${Math.round(an.media)} bpm em repouso.`;
+
+  // atividade de hoje
+  const pct = an.pctHoje;
+  $('sMinHoje').textContent = hoje.minutosAtivos || 0;
+  $('sDistHoje').textContent = fmtDist(hoje.distanciaM || 0);
+  $('sNormalAtiv').textContent = an.normalMin ? `${Math.round(an.normalMin)} min · ${fmtDist(an.normalDist || 0)}` : 'ainda sem histórico';
+  $('sPctHoje').textContent = pct != null ? `${Math.round(pct * 100)}%` : '-';
+  $('sAnel').setAttribute('stroke-dasharray', `${Math.min(1, pct || 0) * 100} 100`);
+  $('sAnel').classList.toggle('completo', (pct || 0) >= 1);
+
+  // o que a coleira percebeu
+  $('sInsights').replaceChildren(...an.insights.map((it, i) => {
+    const li = document.createElement('li'); li.className = it.tipo; li.style.animationDelay = i * 50 + 'ms';
+    const ic = document.createElement('span'); ic.append(iconeSvg(ICONE_PERCEBIDO[it.tipo] || 'i-pata'));
+    const p = document.createElement('p'); p.textContent = it.texto;
+    li.append(ic, p); return li;
+  }));
+
+  // Início e menu
+  $('bpmNormal').textContent = problema ? `Repouso ${an.statusBpm === 'alto' ? 'acima' : 'abaixo'} do normal dele`
+    : an.aprendendo ? 'Aprendendo o normal dele' : `Normal dele em repouso: ${an.faixa[0]}–${an.faixa[1]} bpm`;
+  $('bpmNormal').classList.toggle('alerta', problema);
+  $('pontoSaude').hidden = !problema;
+
+  desenharGraficosSaude();
+}
+
+function desenharGraficosSaude() {
+  if (!analiseSaude) return;
+  const hoje = diaDeHoje();
+  const dias = Object.values(diasSaude).filter((d) => d.data < hoje.data).sort((a, b) => (a.data < b.data ? -1 : 1));
+  graficoRepouso($('gRepouso').querySelector('svg'), dias, hoje, analiseSaude);
+  graficoAtividade($('gAtividade').querySelector('svg'), dias, hoje, analiseSaude);
+}
+const roSaude = new ResizeObserver(() => desenharGraficosSaude());
+roSaude.observe($('gRepouso'));
+roSaude.observe($('gAtividade'));
+
 // ============================================================ navegação (barra lateral)
-const SECOES = ['inicio', 'mapa', 'alertas', 'perdido', 'testes'];
+const SECOES = ['inicio', 'mapa', 'saude', 'alertas', 'perdido', 'testes'];
 let secaoAtual = null, mapaJaAberto = false;
 
 function irPara(sec, novaEntrada = false) {
@@ -894,6 +1041,16 @@ async function conectarFirebase() {
     desenharArea();                 // um rascunho em andamento continua sendo mostrado
   });
 
+  // resumos diários dos últimos 14 dias (id = {pet}_{AAAA-MM-DD}: dá para filtrar pelo id, sem índice extra)
+  const qSaude = fs.query(fs.collection(db, 'saude'),
+    fs.where(fs.documentId(), '>=', `${PET_ID}_${dataLocal(diasAtras(14))}`),
+    fs.where(fs.documentId(), '<=', `${PET_ID}_9999`));
+  fs.onSnapshot(qSaude, (snap) => {
+    diasSaude = {};
+    snap.docs.forEach((d) => { const x = d.data(); if (x.data) diasSaude[x.data] = normalizarDia(x); });
+    renderSaude();
+  }, (err) => console.error('saude', err));
+
   const q = fs.query(fs.collection(db, 'alertas'), fs.orderBy('criadoEm', 'desc'), fs.limit(40));
   fs.onSnapshot(q, (snap) => {
     const lista = snap.docs.map((d) => ({ ...d.data(), id: d.id, data: paraData(d.data().criadoEm) }))
@@ -906,16 +1063,18 @@ async function conectarFirebase() {
 setInterval(() => { if (ultimoEstado) renderEstado(ultimoEstado, false); }, 5000);
 new ResizeObserver(() => { map.invalidateSize(); desenharBpm(); }).observe($('map'));
 
+if (!configurado) carregarSaudeLocal();
 irPara(location.hash.slice(1) || 'inicio');
 aplicarPerfil();
 desenharQR();
+renderSaude();
 if (!configurado) renderAlertasLocais(); else renderAlertas([]);
 desenharArea();
 if (configurado) {
   conectarFirebase().catch((err) => {
     console.error(err);
     definirConexao('Sem Firebase: simulação', 'erro');
-    db = null; ligarSimulador();
+    db = null; carregarSaudeLocal(); renderSaude(); ligarSimulador();
   });
 } else {
   definirConexao('Modo simulação', 'simulacao');

@@ -8,6 +8,8 @@ service cloud.firestore {
     match /config/{doc}    { allow read, write: if true; }
     // perfil publico do pet (lido pela pagina do QR)
     match /perfis/{pet}    { allow read: if true; allow write: if true; }
+    // resumo diario de saude e atividade (escrito pela coleira)
+    match /saude/{dia}     { allow read, write: if true; }
     // a pagina do QR so pode CRIAR avisos, nunca apagar ou editar
     match /alertas/{id}    { allow read, create: if true; }
   }

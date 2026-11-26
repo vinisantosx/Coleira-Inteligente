@@ -757,3 +757,92 @@ a.pilula { text-decoration: none; }
   .banner a[hidden] { display: none; }
 }
 [hidden] { display: none !important; }
+
+/* =========================================================
+   Saúde e atividade
+   ========================================================= */
+.sinal-sub { display: block; margin-top: 6px; font-size: 0.8rem; font-weight: 600; color: var(--suave); text-decoration: none; }
+.sinal-sub:hover { color: var(--roxo); }
+.sinal-sub.alerta { color: var(--vermelho-esc); }
+
+.saude-topo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.chip { font-size: 0.78rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--roxo-claro); color: var(--roxo-esc); white-space: nowrap; }
+.chip.normal { background: #d4f5ea; color: var(--menta-esc); }
+.chip.alto, .chip.baixo { background: var(--vermelho); color: #fff; animation: chamar-chip 1.4s ease-in-out infinite; }
+@keyframes chamar-chip { 50% { box-shadow: 0 0 0 6px rgba(239, 64, 87, 0.22); } }
+.saude-valor { font: 700 3rem/1 var(--titulo); margin: 10px 0 14px; }
+.saude-valor small { font-size: 1rem; color: var(--suave); margin-left: 6px; font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 600; }
+.saude-bpm.alto .saude-valor, .saude-bpm.baixo .saude-valor { color: var(--vermelho); }
+.faixa { position: relative; height: 16px; border-radius: 8px; background: linear-gradient(90deg, #ffd9df, var(--lilas) 25%, var(--lilas) 75%, #ffd9df); }
+.faixa-normal { position: absolute; top: 0; bottom: 0; left: 25%; width: 50%; border-radius: 8px; background: var(--menta); opacity: 0.55; transition: left 0.5s, width 0.5s; }
+.saude-bpm.aprendendo .faixa-normal { background: repeating-linear-gradient(-45deg, var(--roxo-claro) 0 6px, #fff 6px 12px); opacity: 1; }
+.faixa-marca {
+  position: absolute; top: -6px; width: 6px; height: 28px; margin-left: -3px; border-radius: 3px;
+  background: var(--tinta); box-shadow: 0 0 0 3px #fff; transition: left 0.6s;
+}
+.saude-bpm.alto .faixa-marca, .saude-bpm.baixo .faixa-marca { background: var(--vermelho); }
+.faixa-legenda { display: flex; justify-content: space-between; gap: 8px; font-size: 0.8rem; color: var(--suave); margin-top: 8px; }
+.faixa-legenda span:nth-child(2) { font-weight: 600; text-align: center; }
+#sBase { margin-top: 10px; }
+
+.ativ-linha { position: relative; display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 18px; align-items: center; margin-top: 10px; }
+.anel { width: 128px; height: 128px; transform: rotate(-90deg); }
+.anel circle { fill: none; stroke-width: 14; }
+.anel-fundo { stroke: var(--roxo-claro); }
+.anel-valor { stroke: var(--coral); stroke-linecap: round; transition: stroke-dasharray 0.8s ease; }
+.anel-valor.completo { stroke: var(--menta); }
+.anel-centro { position: absolute; left: 0; top: 0; width: 128px; height: 128px; display: grid; place-content: center; text-align: center; }
+.anel-centro b { font: 700 2rem/1 var(--titulo); }
+.anel-centro small { font-size: 0.75rem; color: var(--suave); }
+.ativ-dados { display: grid; gap: 10px; }
+.ativ-dados dt { font-size: 0.78rem; color: var(--suave); font-weight: 600; }
+.ativ-dados dd { font: 600 1.25rem/1.2 var(--titulo); }
+
+.percebidos { list-style: none; display: grid; gap: 10px; margin-top: 12px; }
+.percebidos li {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; align-items: start;
+  padding: 12px; border-radius: 16px; background: var(--lilas); animation: entrar 0.35s ease-out both;
+}
+.percebidos li > span { width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: var(--roxo); }
+.percebidos li > span svg { width: 18px; height: 18px; }
+.percebidos .bom > span { background: var(--menta); }
+.percebidos .aviso > span { background: var(--ambar); }
+.percebidos .alerta { background: #fff0f2; }
+.percebidos .alerta > span { background: var(--vermelho); }
+
+.saude-graficos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.fig-g { position: relative; height: 230px; margin-top: 10px; }
+.fig-g > svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.g-eixo { font-size: 11px; fill: var(--suave); }
+.g-eixo.g-hoje { fill: var(--coral); font-weight: 700; }
+.g-vazio { font-size: 13px; fill: var(--suave); }
+.g-rotulo { font-size: 11px; font-weight: 700; fill: var(--roxo); paint-order: stroke; stroke: #fff; stroke-width: 4px; stroke-linejoin: round; }
+.g-faixa { fill: var(--menta); opacity: 0.16; }
+.g-media { stroke: var(--roxo); stroke-width: 1.5; stroke-dasharray: 5 5; opacity: 0.6; }
+.g-linha { fill: none; stroke: var(--roxo); stroke-width: 2.5; stroke-linejoin: round; }
+.g-ponto { fill: #fff; stroke: var(--roxo); stroke-width: 2.5; }
+.g-ponto.g-hoje { fill: var(--coral); stroke: #fff; stroke-width: 3; }
+.g-ponto.g-fora { fill: var(--vermelho); stroke: #fff; }
+.g-barra { fill: var(--roxo); opacity: 0.85; }
+.g-barra.g-parado { fill: var(--ambar); opacity: 1; }
+.g-barra.g-hoje { fill: var(--coral); opacity: 1; }
+.legenda { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 0.78rem; color: var(--suave); margin-top: 8px; }
+.legenda i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: -6px; vertical-align: -1px; }
+.lg-faixa { background: rgba(31, 181, 137, 0.3); }
+.lg-ponto { background: #fff; border: 2.5px solid var(--roxo); border-radius: 50% !important; }
+.lg-fora { background: var(--vermelho); border-radius: 50% !important; }
+.lg-barra { background: var(--roxo); }
+.lg-parado { background: var(--ambar); }
+.lg-hoje { background: var(--coral); }
+.nota-saude { font-size: 0.85rem; color: var(--suave); padding: 0 4px; max-width: 80ch; }
+.b-rosa { background: #ffe1ea; } .b-rosa svg { color: var(--vermelho); }
+.b-verde { background: #dff5d8; } .b-verde svg { color: #2f8a3a; }
+
+@media (max-width: 900px) {
+  .saude-topo, .saude-graficos { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  .ativ-linha { grid-template-columns: 104px minmax(0, 1fr); gap: 12px; }
+  .anel, .anel-centro { width: 104px; height: 104px; }
+  .saude-valor { font-size: 2.5rem; }
+}
