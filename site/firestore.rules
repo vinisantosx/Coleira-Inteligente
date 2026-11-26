@@ -1,0 +1,11 @@
+rules_version = '2';
+// Regras ABERTAS para o prototipo / apresentacao: qualquer pessoa com a
+// configuracao do projeto pode ler e escrever. Antes de usar de verdade,
+// adicione autenticacao (Firebase Auth) e restrinja por usuario.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /pets/{pet}      { allow read, write: if true; }
+    match /config/{doc}    { allow read, write: if true; }
+    match /alertas/{id}    { allow read, create: if true; }
+  }
+}

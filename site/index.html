@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coleira inteligente | Acompanhamento</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body data-estado="aguardando">
+    <!-- símbolos reutilizados -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-pata" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="5" ry="4.2"/><circle cx="5.5" cy="10" r="2.2"/><circle cx="9.5" cy="6.2" r="2.3"/><circle cx="14.5" cy="6.2" r="2.3"/><circle cx="18.5" cy="10" r="2.2"/></symbol>
+        <symbol id="i-casa" viewBox="0 0 24 24"><path d="M12 3 2.5 11h2.7v9h5.3v-5.5h3v5.5h5.3v-9h2.7z"/></symbol>
+        <symbol id="i-desfazer" viewBox="0 0 24 24"><path d="M9 5 3.5 10.5 9 16v-3.8c4.6 0 7.6 1.4 9.7 5.3-.6-5.4-3.4-9.6-9.7-10.3z"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="m9.5 16.6-4.6-4.6-1.6 1.6 6.2 6.2L21 8.3l-1.6-1.6z"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="m18.3 7.1-1.4-1.4L12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z"/></symbol>
+        <symbol id="i-corre" viewBox="0 0 24 24"><path d="M13.5 5.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3A7.3 7.3 0 0 0 19 13v-2a5 5 0 0 1-4.3-2.4l-1-1.6a2 2 0 0 0-2.5-.8L6 8.3V13h2V9.6z"/></symbol>
+        <symbol id="i-bateria" viewBox="0 0 24 24"><path d="M16 4h-2V2h-4v2H8a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zm-3 14h-2v-2h2zm0-4h-2V8h2z"/></symbol>
+        <symbol id="i-tag" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7v6a7 7 0 0 0 14 0V9a7 7 0 0 0-7-7zm0 5a1.6 1.6 0 1 1 0-3.2A1.6 1.6 0 0 1 12 7z"/></symbol>
+        <symbol id="i-sino" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.5-2.5h-5A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.5-6.8V3.5a1.5 1.5 0 0 0-3 0v.7A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></symbol>
+        <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></symbol>
+        <symbol id="i-zap" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2s-1 .3-3.4-.7a11.7 11.7 0 0 1-4.6-4.1c-.4-.5-1-1.6-1-2.9a3.2 3.2 0 0 1 1-2.4c.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .6l-.4.6-.4.5c-.2.2-.3.3-.1.7a8.4 8.4 0 0 0 1.6 2 7.4 7.4 0 0 0 2.3 1.4c.3.2.5.1.7-.1l.9-1.1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.3s.1.7-.1 1.3z"/></symbol>
+        <!-- carinha do cachorro -->
+        <symbol id="i-cao" viewBox="0 0 120 120">
+          <ellipse cx="27" cy="52" rx="17" ry="30" transform="rotate(18 27 52)" fill="#8a5a3b"/>
+          <ellipse cx="93" cy="52" rx="17" ry="30" transform="rotate(-18 93 52)" fill="#8a5a3b"/>
+          <circle cx="60" cy="58" r="38" fill="#e8b07a"/>
+          <ellipse cx="60" cy="76" rx="22" ry="17" fill="#fbe3c6"/>
+          <ellipse cx="76" cy="44" rx="11" ry="10" fill="#c98a55"/>
+          <circle cx="45" cy="52" r="5.5" fill="#1d1b3a"/><circle cx="75" cy="52" r="5.5" fill="#1d1b3a"/>
+          <circle cx="47" cy="50" r="1.8" fill="#fff"/><circle cx="77" cy="50" r="1.8" fill="#fff"/>
+          <ellipse cx="60" cy="68" rx="8" ry="5.5" fill="#1d1b3a"/>
+          <path d="M60 73v5m-8 1c3 4 13 4 16 0" stroke="#1d1b3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M28 92c18 10 46 10 64 0l2 9c-20 11-48 11-68 0z" fill="#ff7a45"/>
+          <circle cx="60" cy="106" r="7" fill="#ffc94a" stroke="#e0a41f" stroke-width="2"/>
+        </symbol>
+      </defs>
+    </svg>
+
+    <header class="topo">
+      <div class="marca">
+        <span class="logo"><svg><use href="#i-pata"/></svg></span>
+        <div>
+          <strong>Coleira inteligente</strong>
+          <small>Acompanhamento em tempo real</small>
+        </div>
+      </div>
+      <span class="conexao" id="conexao"><i></i><span id="conexaoTexto">Conectando...</span></span>
+    </header>
+
+    <div class="banner" id="banner" hidden role="alert">
+      <span class="banner-icone"><svg><use id="bannerIcone" href="#i-corre"/></svg></span>
+      <div class="banner-texto">
+        <strong id="bannerTitulo">Alerta</strong>
+        <span id="bannerTexto"></span>
+      </div>
+      <div class="banner-acoes">
+        <a id="bannerMapa" href="#" target="_blank" rel="noopener"><svg><use href="#i-mapa"/></svg>Abrir no Google Maps</a>
+        <a id="bannerZap" href="#" target="_blank" rel="noopener"><svg><use href="#i-zap"/></svg>Enviar no WhatsApp</a>
+      </div>
+    </div>
+
+    <main class="grade">
+      <!-- status principal -->
+      <section class="heroi" aria-live="polite">
+        <div class="avatar">
+          <span class="onda"></span><span class="onda o2"></span>
+          <svg class="cao" viewBox="0 0 120 120"><use href="#i-cao"/></svg>
+        </div>
+        <div class="heroi-texto">
+          <span class="etiqueta" id="etiquetaEstado">Aguardando</span>
+          <h1 id="nomePet">-</h1>
+          <p id="status">Aguardando localização...</p>
+        </div>
+        <div class="distancia">
+          <span class="valor" id="distancia">-</span>
+          <small id="distanciaLegenda">da casa</small>
+          <div class="regua"><b id="reguaPreench"></b><i id="reguaLimite"></i></div>
+        </div>
+        <svg class="patas-deco" viewBox="0 0 200 120" aria-hidden="true">
+          <use href="#i-pata" x="10" y="70" width="22" height="22" transform="rotate(-20 21 81)"/>
+          <use href="#i-pata" x="50" y="48" width="22" height="22" transform="rotate(-10 61 59)"/>
+          <use href="#i-pata" x="92" y="62" width="22" height="22" transform="rotate(-25 103 73)"/>
+          <use href="#i-pata" x="132" y="34" width="22" height="22" transform="rotate(-12 143 45)"/>
+          <use href="#i-pata" x="170" y="46" width="22" height="22" transform="rotate(-28 181 57)"/>
+        </svg>
+      </section>
+
+      <!-- mapa e área segura -->
+      <section class="cartao mapa-cartao">
+        <div class="mapa-envolve">
+          <div id="map"></div>
+          <div class="dica-mapa" id="dicaMapa" hidden>
+            <svg><use href="#i-casa"/></svg> Clique no mapa ou arraste a casinha até o lugar certo
+          </div>
+        </div>
+        <div class="area">
+          <button id="btnMoverCasa" type="button" class="pilula"><svg><use href="#i-casa"/></svg><span>Mover casa</span></button>
+          <div class="raio">
+            <label for="raio">Raio da área segura <b id="raioValor">50 m</b></label>
+            <input type="range" id="raio" min="10" max="500" step="5" value="50" />
+          </div>
+          <div class="area-acoes">
+            <button id="btnDesfazer" type="button" class="pilula leve" disabled title="Desfazer (Ctrl+Z)">
+              <svg><use href="#i-desfazer"/></svg><span>Desfazer</span><em id="contDesfazer" hidden></em>
+            </button>
+            <button id="btnCancelar" type="button" class="pilula leve" disabled>Cancelar</button>
+            <button id="btnSalvarArea" type="button" class="pilula primario" disabled><svg><use href="#i-check"/></svg>Salvar área</button>
+          </div>
+        </div>
+        <p class="dica" id="dicaArea">A área azul é onde o pet pode ficar sem gerar alerta.</p>
+      </section>
+
+      <!-- sinais vitais e coleira -->
+      <aside class="sinais">
+        <div class="cartao sinal bpm" id="cartaoBpm">
+          <div class="sinal-topo">
+            <span class="sinal-nome">Batimentos</span>
+            <svg class="coracao" id="coracao" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.2 2.3 4 6.3 4c2.2 0 3.7 1.3 4.7 2.7h2C14 5.3 15.5 4 17.7 4c4 0 6 4.2 4.3 7.7C19.5 16.4 12 21 12 21z"/></svg>
+          </div>
+          <div class="sinal-valor"><span id="batimentos">-</span><small id="bpmUnidade">bpm</small></div>
+          <canvas id="graficoBpm" height="44" aria-label="Batimentos recentes"></canvas>
+        </div>
+
+        <div class="cartao sinal coleira" id="cartaoColeira">
+          <span class="sinal-nome">Coleira</span>
+          <div class="plaquinha" id="plaquinha">
+            <svg class="tag"><use href="#i-tag"/></svg>
+            <svg class="marca-tag"><use id="iconeColeira" href="#i-check"/></svg>
+          </div>
+          <div class="sinal-valor pequeno" id="coleira">-</div>
+        </div>
+
+        <div class="cartao sinal bateria">
+          <span class="sinal-nome">Bateria</span>
+          <svg class="osso" viewBox="0 0 120 40" aria-hidden="true">
+            <defs>
+              <clipPath id="formaOsso">
+                <circle cx="13" cy="12" r="10"/><circle cx="13" cy="28" r="10"/>
+                <circle cx="107" cy="12" r="10"/><circle cx="107" cy="28" r="10"/>
+                <rect x="12" y="10" width="96" height="20" rx="4"/>
+              </clipPath>
+            </defs>
+            <g clip-path="url(#formaOsso)">
+              <rect width="120" height="40" class="osso-fundo"/>
+              <rect id="ossoPreench" width="0" height="40" class="osso-preench"/>
+            </g>
+          </svg>
+          <div class="sinal-valor pequeno"><span id="bateria">-</span></div>
+        </div>
+
+        <div class="cartao sinal gps">
+          <div class="sinal-topo">
+            <span class="sinal-nome">GPS</span>
+            <span class="barras" id="barrasGps"><i></i><i></i><i></i><i></i></span>
+          </div>
+          <div class="sinal-valor pequeno" id="gps">-</div>
+          <dl class="coords">
+            <div><dt>Lat</dt><dd id="latitude">-</dd></div>
+            <div><dt>Lng</dt><dd id="longitude">-</dd></div>
+            <div><dt>Atualizado</dt><dd id="atualizado">-</dd></div>
+          </dl>
+        </div>
+      </aside>
+
+      <!-- alertas -->
+      <section class="cartao alertas-cartao">
+        <div class="titulo-linha">
+          <h2><svg><use href="#i-sino"/></svg>Alertas</h2>
+          <button id="btnNotificar" type="button" class="pilula leve">Ativar notificações</button>
+        </div>
+        <ul class="alertas" id="alertas"></ul>
+      </section>
+
+      <!-- simulação -->
+      <section class="cartao simulacao" id="painelSimulacao">
+        <h2><svg><use href="#i-pata"/></svg>Área de testes</h2>
+        <p class="dica">Simule a coleira para testar o site e apresentar o projeto.</p>
+        <div class="botoes">
+          <button type="button" data-sim="dentro" class="brinquedo b-menta"><svg><use href="#i-casa"/></svg>Pet em casa</button>
+          <button type="button" data-sim="fora" class="brinquedo b-coral"><svg><use href="#i-corre"/></svg>Pet fora da área</button>
+          <button type="button" data-sim="coleira" class="brinquedo b-amarelo"><svg><use href="#i-tag"/></svg>Tirar / pôr coleira</button>
+          <button type="button" data-sim="passeio" id="btnPasseio" class="brinquedo b-roxo"><svg><use href="#i-pata"/></svg><span>Iniciar fuga simulada</span></button>
+        </div>
+      </section>
+    </main>
+
+    <div class="aviso" id="aviso" role="status" hidden>
+      <span id="avisoTexto"></span>
+      <button type="button" id="avisoAcao">Desfazer</button>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script type="module" src="script.js"></script>
+  </body>
+</html>
