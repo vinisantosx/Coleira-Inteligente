@@ -46,16 +46,38 @@
       </defs>
     </svg>
 
-    <header class="topo">
-      <div class="marca">
-        <span class="logo"><svg><use href="#i-pata"/></svg></span>
-        <div>
-          <strong>Coleira inteligente</strong>
-          <small>Acompanhamento em tempo real</small>
+    <div class="app">
+      <aside class="lateral" id="lateral" aria-label="Menu">
+        <div class="marca">
+          <span class="logo"><svg><use href="#i-pata"/></svg></span>
+          <div>
+            <strong>Coleira inteligente</strong>
+            <small>Acompanhamento em tempo real</small>
+          </div>
         </div>
-      </div>
-      <span class="conexao" id="conexao"><i></i><span id="conexaoTexto">Conectando...</span></span>
-    </header>
+        <div class="lateral-pet">
+          <svg class="lateral-avatar" viewBox="0 0 120 120"><use href="#i-cao"/></svg>
+          <div><b id="nomePetMenu">-</b><small id="estadoMenu">Aguardando</small></div>
+        </div>
+        <nav class="nav" id="nav">
+        <a href="#inicio" class="nav-item" data-secao="inicio"><svg><use href="#i-casa"/></svg><span>Início</span></a>
+        <a href="#mapa" class="nav-item" data-secao="mapa"><svg><use href="#i-mapa"/></svg><span>Mapa e área segura</span></a>
+        <a href="#alertas" class="nav-item" data-secao="alertas"><svg><use href="#i-sino"/></svg><span>Alertas</span><em class="selo" id="seloAlertas" hidden></em></a>
+        <a href="#perdido" class="nav-item" data-secao="perdido"><svg><use href="#i-megafone"/></svg><span>Pet perdido e QR</span><i class="ponto-perdido" id="pontoPerdido" hidden></i></a>
+        <a href="#testes" class="nav-item" data-secao="testes"><svg><use href="#i-pata"/></svg><span>Área de testes</span></a>
+        </nav>
+        <span class="conexao" data-conexao><i></i><span data-conexao-texto>Conectando...</span></span>
+      </aside>
+      <div class="fundo-menu" id="fundoMenu" hidden></div>
+
+      <div class="conteudo">
+        <header class="topo-movel">
+          <button type="button" class="menu-botao" id="btnMenu" aria-label="Abrir menu" aria-expanded="false" aria-controls="lateral">
+            <span></span><span></span><span></span>
+          </button>
+          <strong id="tituloMovel">Início</strong>
+          <span class="conexao compacta" data-conexao><i></i><span data-conexao-texto>Conectando...</span></span>
+        </header>
 
     <div class="banner" id="banner" hidden role="alert">
       <span class="banner-icone"><svg><use id="bannerIcone" href="#i-corre"/></svg></span>
@@ -70,7 +92,9 @@
       </div>
     </div>
 
-    <main class="grade">
+        <main>
+          <!-- ===================== INÍCIO ===================== -->
+          <section class="secao" id="sec-inicio" data-titulo="Início" tabindex="-1">
       <!-- status principal -->
       <section class="heroi" aria-live="polite">
         <div class="avatar">
@@ -81,7 +105,10 @@
           <span class="etiqueta" id="etiquetaEstado">Aguardando</span>
           <h1 id="nomePet">-</h1>
           <p id="status">Aguardando localização...</p>
-          <button type="button" id="btnPerdido" class="heroi-botao"><svg><use href="#i-megafone"/></svg><span>Meu pet sumiu</span></button>
+          <div class="heroi-acoes">
+            <a href="#mapa" class="heroi-botao"><svg><use href="#i-mapa"/></svg><span>Ver no mapa</span></a>
+            <button type="button" id="btnPerdido" class="heroi-botao"><svg><use href="#i-megafone"/></svg><span>Meu pet sumiu</span></button>
+          </div>
         </div>
         <div class="distancia">
           <span class="valor" id="distancia">-</span>
@@ -97,30 +124,6 @@
         </svg>
       </section>
 
-      <!-- mapa e área segura -->
-      <section class="cartao mapa-cartao">
-        <div class="mapa-envolve">
-          <div id="map"></div>
-          <div class="dica-mapa" id="dicaMapa" hidden>
-            <svg><use href="#i-casa"/></svg> Clique no mapa ou arraste a casinha até o lugar certo
-          </div>
-        </div>
-        <div class="area">
-          <button id="btnMoverCasa" type="button" class="pilula"><svg><use href="#i-casa"/></svg><span>Mover casa</span></button>
-          <div class="raio">
-            <label for="raio">Raio da área segura <b id="raioValor">50 m</b></label>
-            <input type="range" id="raio" min="10" max="500" step="5" value="50" />
-          </div>
-          <div class="area-acoes">
-            <button id="btnDesfazer" type="button" class="pilula leve" disabled title="Desfazer (Ctrl+Z)">
-              <svg><use href="#i-desfazer"/></svg><span>Desfazer</span><em id="contDesfazer" hidden></em>
-            </button>
-            <button id="btnCancelar" type="button" class="pilula leve" disabled>Cancelar</button>
-            <button id="btnSalvarArea" type="button" class="pilula primario" disabled><svg><use href="#i-check"/></svg>Salvar área</button>
-          </div>
-        </div>
-        <p class="dica" id="dicaArea">A área azul é onde o pet pode ficar sem gerar alerta.</p>
-      </section>
 
       <!-- sinais vitais e coleira -->
       <aside class="sinais">
@@ -174,15 +177,84 @@
         </div>
       </aside>
 
+
+            <section class="cartao resumo-alertas">
+              <div class="titulo-linha">
+                <h2><svg><use href="#i-sino"/></svg>Últimos alertas</h2>
+                <a href="#alertas" class="pilula leve">Ver todos</a>
+              </div>
+              <ul class="alertas curta" id="alertasResumo"></ul>
+            </section>
+          </section>
+
+          <!-- ===================== MAPA ===================== -->
+          <section class="secao" id="sec-mapa" data-titulo="Mapa e área segura" tabindex="-1" hidden>
+        <header class="secao-topo">
+          <h2 class="secao-titulo">Mapa e área segura</h2>
+          <p>Veja onde o pet está, o rastro das patinhas e ajuste a área em que ele pode ficar sem gerar alerta.</p>
+        </header>
+
+      <!-- mapa e área segura -->
+      <section class="cartao mapa-cartao">
+        <div class="mapa-envolve">
+          <div id="map"></div>
+          <div class="dica-mapa" id="dicaMapa" hidden>
+            <svg><use href="#i-casa"/></svg> Clique no mapa ou arraste a casinha até o lugar certo
+          </div>
+        </div>
+        <div class="area">
+          <button id="btnMoverCasa" type="button" class="pilula"><svg><use href="#i-casa"/></svg><span>Mover casa</span></button>
+          <div class="raio">
+            <label for="raio">Raio da área segura <b id="raioValor">50 m</b></label>
+            <input type="range" id="raio" min="10" max="500" step="5" value="50" />
+          </div>
+          <div class="area-acoes">
+            <button id="btnDesfazer" type="button" class="pilula leve" disabled title="Desfazer (Ctrl+Z)">
+              <svg><use href="#i-desfazer"/></svg><span>Desfazer</span><em id="contDesfazer" hidden></em>
+            </button>
+            <button id="btnCancelar" type="button" class="pilula leve" disabled>Cancelar</button>
+            <button id="btnSalvarArea" type="button" class="pilula primario" disabled><svg><use href="#i-check"/></svg>Salvar área</button>
+          </div>
+        </div>
+        <p class="dica" id="dicaArea">A área azul é onde o pet pode ficar sem gerar alerta.</p>
+      </section>
+
+
+          </section>
+
+          <!-- ===================== ALERTAS ===================== -->
+          <section class="secao" id="sec-alertas" data-titulo="Alertas" tabindex="-1" hidden>
+        <header class="secao-topo">
+          <h2 class="secao-titulo">Alertas</h2>
+          <p>Tudo o que a coleira e quem encontrou o pet avisaram, do mais recente para o mais antigo.</p>
+        </header>
+
       <!-- alertas -->
       <section class="cartao alertas-cartao">
         <div class="titulo-linha">
-          <h2><svg><use href="#i-sino"/></svg>Alertas</h2>
+          <h2><svg><use href="#i-sino"/></svg>Histórico</h2>
           <button id="btnNotificar" type="button" class="pilula leve">Ativar notificações</button>
         </div>
         <ul class="alertas" id="alertas"></ul>
       </section>
 
+
+          </section>
+
+          <!-- ===================== PET PERDIDO ===================== -->
+          <section class="secao" id="sec-perdido" data-titulo="Pet perdido e QR" tabindex="-1" hidden>
+        <header class="secao-topo">
+          <h2 class="secao-titulo">Pet perdido e QR</h2>
+          <p>Prepare o perfil que aparece para quem escanear a coleira e ative o modo perdido se o pet sumir.</p>
+        </header>
+
+            <div class="perdido-grade">
+              <section class="cartao modo-perdido-cartao">
+                <span class="mp-icone"><svg><use href="#i-megafone"/></svg></span>
+                <h2 id="mpTitulo">Modo pet perdido desligado</h2>
+                <p class="dica" id="mpTexto">Se o pet sumir, ative para a coleira piscar o LED sem parar e a página do QR pedir ajuda a quem encontrá-lo.</p>
+                <button type="button" class="pilula perigo grande" id="btnPerdido2"><svg><use href="#i-megafone"/></svg><span>Meu pet sumiu</span></button>
+              </section>
       <!-- perfil, QR e modo perdido -->
       <section class="cartao perfil-cartao">
         <h2><svg><use href="#i-qr"/></svg>Perfil e QR da coleira</h2>
@@ -218,10 +290,21 @@
         </div>
       </section>
 
+
+            </div>
+          </section>
+
+          <!-- ===================== TESTES ===================== -->
+          <section class="secao" id="sec-testes" data-titulo="Área de testes" tabindex="-1" hidden>
+        <header class="secao-topo">
+          <h2 class="secao-titulo">Área de testes</h2>
+          <p>Simule a coleira para testar o site e apresentar o projeto sem o hardware.</p>
+        </header>
+
       <!-- simulação -->
       <section class="cartao simulacao" id="painelSimulacao">
-        <h2><svg><use href="#i-pata"/></svg>Área de testes</h2>
-        <p class="dica">Simule a coleira para testar o site e apresentar o projeto.</p>
+        <h2><svg><use href="#i-pata"/></svg>O que você quer simular?</h2>
+        <p class="dica">Os botões fazem o papel da coleira. Com o Firebase configurado, eles gravam no banco como se fossem o hardware.</p>
         <div class="botoes">
           <button type="button" data-sim="dentro" class="brinquedo b-menta"><svg><use href="#i-casa"/></svg>Pet em casa</button>
           <button type="button" data-sim="fora" class="brinquedo b-coral"><svg><use href="#i-corre"/></svg>Pet fora da área</button>
@@ -230,7 +313,11 @@
           <button type="button" data-sim="achado" class="brinquedo b-azul"><svg><use href="#i-olho"/></svg>Alguém encontrou o pet</button>
         </div>
       </section>
-    </main>
+
+          </section>
+        </main>
+      </div>
+    </div>
 
     <dialog class="dialogo" id="dlgPerdido" aria-labelledby="dlgTitulo">
       <form method="dialog">

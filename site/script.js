@@ -212,6 +212,7 @@ function atualizarStatus(e, fora, dist) {
   }
   document.body.dataset.estado = estado;
   $('etiquetaEstado').textContent = etiqueta;
+  $('estadoMenu').textContent = etiqueta;
   $('status').textContent = texto;
 
   const temPos = e.lat && e.lng;
@@ -316,8 +317,30 @@ function renderAlertas(lista) {
     li.append(ic, msg, t);
     ul.append(li);
   });
+  // os 3 mais recentes também aparecem no Início
+  $('alertasResumo').replaceChildren(...[...ul.children].slice(0, 3).map((li) => {
+    const c = li.cloneNode(true); c.style.animationDelay = '0ms'; return c;
+  }));
+  ultimaLista = lista;
+  atualizarSelo();
   desenharAchados(lista);
   verificarAvistamentos(lista);
+}
+
+// selo de alertas não lidos no menu
+let ultimaLista = [];
+let vistoAte = (() => { try { return +localStorage.getItem('coleira-alertas-vistos') || Date.now(); } catch { return Date.now(); } })();
+function atualizarSelo() {
+  if (secaoAtual === 'alertas') marcarAlertasLidos();
+  const n = ultimaLista.filter((a) => a.data && a.data.getTime() > vistoAte).length;
+  $('seloAlertas').hidden = !n;
+  $('seloAlertas').textContent = n > 9 ? '9+' : n;
+}
+function marcarAlertasLidos() {
+  const maisNovo = Math.max(Date.now(), ...ultimaLista.map((a) => a.data?.getTime() || 0));
+  vistoAte = maisNovo;
+  try { localStorage.setItem('coleira-alertas-vistos', String(maisNovo)); } catch { /* ok */ }
+  $('seloAlertas').hidden = true;
 }
 
 function linhaContato(a) {
@@ -359,7 +382,7 @@ function verificarAvistamentos(lista) {
       const temPos = novo.lat && novo.lng;
       if (temPos) map.flyTo([novo.lat, novo.lng], 18);
       mostrarAviso(`Alguém encontrou ${nomePet()}!`, temPos ? 'Ver no mapa' : null,
-        temPos ? () => { map.flyTo([novo.lat, novo.lng], 18); $('map').scrollIntoView({ behavior: 'smooth', block: 'center' }); } : null, 12000);
+        temPos ? () => { irPara('mapa', true); setTimeout(() => map.flyTo([novo.lat, novo.lng], 18), 120); } : null, 12000);
     }
   }
   idsAvistados = new Set(avs.map(chaveAlerta));
@@ -630,8 +653,16 @@ function aplicarPerfil() {
   $('nomePet').textContent = nomePet();
   document.title = `${nomePet()} | Coleira inteligente`;
   document.body.dataset.perdido = String(!!perfil.perdido);
-  $('btnPerdido').querySelector('span').textContent = perfil.perdido ? 'Pet encontrado' : 'Meu pet sumiu';
-  usar($('btnPerdido').querySelector('use'), perfil.perdido ? 'i-check' : 'i-megafone');
+  $('nomePetMenu').textContent = nomePet();
+  $('pontoPerdido').hidden = !perfil.perdido;
+  ['btnPerdido', 'btnPerdido2'].forEach((id) => {
+    $(id).querySelector('span').textContent = perfil.perdido ? 'Pet encontrado' : 'Meu pet sumiu';
+    usar($(id).querySelector('use'), perfil.perdido ? 'i-check' : 'i-megafone');
+  });
+  $('mpTitulo').textContent = perfil.perdido ? 'Modo pet perdido ATIVO' : 'Modo pet perdido desligado';
+  $('mpTexto').textContent = perfil.perdido
+    ? `Desde ${perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora'}. A coleira pisca o LED sem parar e a página do QR pede ajuda a quem encontrar ${nomePet()}.`
+    : 'Se o pet sumir, ative para a coleira piscar o LED sem parar e a página do QR pedir ajuda a quem encontrá-lo.';
   if (!formSujo) preencherPerfil();
   if (ultimoEstado) renderEstado(ultimoEstado, false);
   else atualizarStatus(null, false, null);
@@ -762,11 +793,13 @@ async function marcarEncontrado() {
 }
 function falhaPerdido(err) { console.error(err); mostrarAviso('Não foi possível mudar o modo perdido: ' + err.message, null, null, 6000); }
 
-$('btnPerdido').addEventListener('click', () => {
+function alternarPerdido() {
   if (perfil.perdido) return marcarEncontrado();
   const d = $('dlgPerdido');
   if (typeof d.showModal === 'function') d.showModal(); else ativarPerdido();
-});
+}
+$('btnPerdido').addEventListener('click', alternarPerdido);
+$('btnPerdido2').addEventListener('click', alternarPerdido);
 $('dlgPerdido').addEventListener('close', () => { if ($('dlgPerdido').returnValue === 'ativar') ativarPerdido(); });
 $('btnEncontradoBanner').addEventListener('click', marcarEncontrado);
 
@@ -777,10 +810,60 @@ window.addEventListener('storage', (ev) => {
   if (ev.key === CHAVE_PERFIL) { perfil = perfilLocal(); aplicarPerfil(); }
 });
 
+// ============================================================ navegação (barra lateral)
+const SECOES = ['inicio', 'mapa', 'alertas', 'perdido', 'testes'];
+let secaoAtual = null, mapaJaAberto = false;
+
+function irPara(sec, novaEntrada = false) {
+  if (!SECOES.includes(sec)) sec = 'inicio';
+  if (location.hash.slice(1) !== sec) {
+    if (novaEntrada) { location.hash = sec; return; }              // o hashchange chama de novo
+    history.replaceState(null, '', '#' + sec);
+  }
+  const mudou = secaoAtual !== sec;
+  secaoAtual = sec;
+  SECOES.forEach((s) => { $('sec-' + s).hidden = s !== sec; });
+  document.querySelectorAll('.nav-item').forEach((a) => {
+    const ativo = a.dataset.secao === sec;
+    a.classList.toggle('ativo', ativo);
+    if (ativo) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+  });
+  $('tituloMovel').textContent = $('sec-' + sec).dataset.titulo;
+  fecharMenu();
+  if (sec === 'mapa') {
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+      if (!mapaJaAberto) { mapaJaAberto = true; const a = areaAtual(); map.setView(ultimoEstado?.lat ? [ultimoEstado.lat, ultimoEstado.lng] : [a.lat, a.lng], 17); }
+    });
+  } else if (movendoCasa) definirMovendo(false);
+  if (sec === 'alertas') marcarAlertasLidos();
+  if (mudou) { window.scrollTo({ top: 0 }); $('sec-' + sec).focus({ preventScroll: true }); }
+}
+window.addEventListener('hashchange', () => irPara(location.hash.slice(1)));
+
+function abrirMenu() {
+  document.body.classList.add('menu-aberto');
+  $('fundoMenu').hidden = false;
+  $('btnMenu').setAttribute('aria-expanded', 'true');
+  document.querySelector('.nav-item.ativo, .nav-item')?.focus();
+}
+function fecharMenu() {
+  if (!document.body.classList.contains('menu-aberto')) return;
+  document.body.classList.remove('menu-aberto');
+  $('fundoMenu').hidden = true;
+  $('btnMenu').setAttribute('aria-expanded', 'false');
+}
+$('btnMenu').addEventListener('click', abrirMenu);
+$('fundoMenu').addEventListener('click', fecharMenu);
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') fecharMenu(); });
+
 // ============================================================ conexão
 function definirConexao(texto, classe) {
-  $('conexaoTexto').textContent = texto;
-  $('conexao').className = 'conexao ' + classe;
+  document.querySelectorAll('[data-conexao]').forEach((el) => {
+    el.className = 'conexao ' + classe + (el.classList.contains('compacta') ? ' compacta' : '');
+    el.title = texto;
+    el.querySelector('[data-conexao-texto]').textContent = texto;
+  });
 }
 
 async function conectarFirebase() {
@@ -823,6 +906,7 @@ async function conectarFirebase() {
 setInterval(() => { if (ultimoEstado) renderEstado(ultimoEstado, false); }, 5000);
 new ResizeObserver(() => { map.invalidateSize(); desenharBpm(); }).observe($('map'));
 
+irPara(location.hash.slice(1) || 'inicio');
 aplicarPerfil();
 desenharQR();
 if (!configurado) renderAlertasLocais(); else renderAlertas([]);
