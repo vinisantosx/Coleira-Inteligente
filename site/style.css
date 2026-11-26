@@ -846,3 +846,215 @@ a.pilula { text-decoration: none; }
   .anel, .anel-centro { width: 104px; height: 104px; }
   .saude-valor { font-size: 2.5rem; }
 }
+
+/* =========================================================
+   Página do QR: registrar o encontro e conversar com o tutor
+   ========================================================= */
+.qr-pergunta { display: block !important; text-align: center; font: 600 1.35rem/1.2 var(--titulo); color: var(--roxo-esc); margin-top: 4px; }
+.qr-explica { color: var(--suave); font-size: 0.92rem; margin: 6px auto 14px; max-width: 38ch; }
+.qr-chips { border: 0; margin: 0 0 12px; padding: 0; text-align: left; }
+.qr-chips legend { font-size: 0.85rem; font-weight: 700; color: var(--suave); margin-bottom: 6px; }
+.qr-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.qr-chips legend { width: 100%; }
+.qr-chips label { position: relative; cursor: pointer; }
+.qr-chips input { position: absolute; opacity: 0; pointer-events: none; }
+.qr-chips span {
+  display: inline-flex; align-items: center; min-height: 42px; padding: 0 14px; border-radius: 999px;
+  border: 2px solid var(--linha); font-weight: 600; font-size: 0.9rem; background: #fff; transition: all 0.15s;
+}
+.qr-chips input:checked + span { border-color: var(--roxo); background: var(--roxo-claro); color: var(--roxo-esc); }
+.qr-chips input:focus-visible + span { outline: 3px solid var(--amarelo); outline-offset: 2px; }
+.qr-campos { display: grid; gap: 10px; text-align: left; margin-bottom: 14px; }
+.qr-campos label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--suave); font-weight: 600; }
+.qr-campos input, .qr-campos textarea, .qr-responder input {
+  font: 16px/1.4 'Plus Jakarta Sans', sans-serif; color: var(--tinta);
+  border: 2px solid var(--linha); border-radius: 12px; padding: 10px 12px; width: 100%; background: #fff;
+}
+.qr-campos input:focus, .qr-campos textarea:focus, .qr-responder input:focus { outline: none; border-color: var(--roxo); }
+.qr-duas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.qr-foto-btn {
+  display: flex !important; grid-auto-flow: column; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; border: 2px dashed var(--linha); border-radius: 14px; cursor: pointer; color: var(--roxo) !important;
+}
+.qr-foto-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.qr-foto-btn svg { width: 22px; height: 22px; }
+.qr-foto-btn:focus-within { outline: 3px solid var(--amarelo); outline-offset: 2px; }
+.qr-foto-prev { width: 100%; max-height: 220px; object-fit: cover; border-radius: 14px; }
+.qr-conversa { text-align: left; }
+.qr-conversa .qr-sucesso { text-align: center; }
+.qr-situacao { display: inline-block; margin-top: 8px; padding: 4px 12px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; background: var(--roxo-claro); color: var(--roxo-esc); }
+.qr-situacao.a_caminho { background: #fff1c9; color: #8a5a00; }
+.qr-situacao.resolvido { background: #d4f5ea; color: var(--menta-esc); }
+.qr-mensagens { list-style: none; display: grid; gap: 8px; margin: 16px 0 12px; }
+.qr-mensagens li { display: grid; gap: 2px; padding: 10px 14px; border-radius: 16px; max-width: 85%; }
+.qr-mensagens li.eu { background: var(--roxo-claro); justify-self: end; border-bottom-right-radius: 4px; }
+.qr-mensagens li.tutor { background: #ffe9dd; justify-self: start; border-bottom-left-radius: 4px; }
+.qr-mensagens li.vazio { max-width: none; color: var(--suave); background: var(--lilas); text-align: center; }
+.qr-mensagens strong { font-size: 0.75rem; color: var(--suave); }
+.qr-mensagens time { font-size: 0.72rem; color: var(--suave); justify-self: end; }
+.qr-responder { display: grid; grid-template-columns: minmax(0, 1fr) 48px; gap: 8px; }
+.qr-responder[hidden] { display: none; }
+.qr-responder button { border: 0; border-radius: 12px; background: var(--coral); color: #fff; cursor: pointer; display: grid; place-items: center; }
+.qr-responder button svg { width: 22px; height: 22px; }
+.qr-status.ok { color: var(--menta-esc); }
+@media (max-width: 380px) { .qr-duas { grid-template-columns: 1fr; } }
+
+/* banner: atalho para o modo perdido e "Entendi" */
+.banner-perdido, .banner-entendi {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 10px 14px;
+  border: 0; border-radius: 14px; cursor: pointer; font-weight: 700; font-size: 0.9rem;
+}
+.banner-perdido { background: #fff; color: var(--vermelho-esc); }
+.banner-perdido svg { width: 18px; height: 18px; }
+.banner-entendi { background: rgba(255, 255, 255, 0.18); color: #fff; border: 2px solid rgba(255, 255, 255, 0.6); }
+.banner-perdido[hidden], .banner-entendi[hidden] { display: none; }
+@media (max-width: 600px) { .banner-perdido, .banner-entendi { justify-content: center; font-size: 0.85rem; padding: 8px 10px; } }
+
+/* =========================================================
+   Encontros: quem achou o pet avisou pelo QR
+   ========================================================= */
+.encontros-cartao h2 svg { color: var(--azul); }
+#encontrosInicio { border: 3px solid var(--azul); }
+.lista-encontros { display: grid; gap: 14px; margin-top: 12px; }
+.encontro { border: 2px solid var(--linha); border-radius: 18px; padding: 14px; display: grid; gap: 12px; background: #fff; }
+.encontro.aberto { border-color: #a5c8ef; background: #f5f9ff; }
+.encontro.a_caminho { border-color: #ffd98a; background: #fffaf0; }
+.encontro.resolvido { opacity: 0.85; }
+.encontro-topo { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.encontro-topo strong { display: block; font: 600 1.05rem/1.2 var(--titulo); color: var(--roxo-esc); }
+.encontro-topo small { color: var(--suave); font-size: 0.8rem; }
+.encontro-status { font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; background: #dbeafe; color: #1e4e8c; }
+.encontro-status.a_caminho { background: #fff1c9; color: #8a5a00; }
+.encontro-status.resolvido { background: #d4f5ea; color: var(--menta-esc); }
+.encontro-corpo { display: flex; gap: 12px; align-items: start; }
+.encontro-foto { width: 88px; height: 88px; border-radius: 14px; object-fit: cover; flex: none; }
+.encontro-info { display: grid; gap: 6px; min-width: 0; }
+.encontro-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.encontro-local, .encontro-quem { font-size: 0.88rem; display: flex; gap: 6px; align-items: center; }
+.encontro-local svg { width: 16px; height: 16px; color: var(--azul); flex: none; }
+.encontro-acoes, .encontro-rapidas { display: flex; flex-wrap: wrap; gap: 8px; }
+.encontro-acoes .pilula, .encontro-rapidas .pilula { font-size: 0.85rem; padding: 8px 12px; min-height: 40px; }
+.encontro-conversa { list-style: none; display: grid; gap: 6px; padding: 0; margin: 0; }
+.encontro-conversa li { display: grid; gap: 1px; padding: 8px 12px; border-radius: 14px; max-width: 85%; font-size: 0.9rem; }
+.encontro-conversa li.achador { background: #e7f0fc; justify-self: start; border-bottom-left-radius: 4px; }
+.encontro-conversa li.tutor { background: var(--roxo-claro); justify-self: end; border-bottom-right-radius: 4px; }
+.encontro-conversa strong { font-size: 0.72rem; color: var(--suave); }
+.encontro-conversa time { font-size: 0.7rem; color: var(--suave); justify-self: end; }
+.encontro-responder { display: grid; grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; }
+.encontro-responder input { font: 16px/1.4 'Plus Jakarta Sans', sans-serif; border: 2px solid var(--linha); border-radius: 12px; padding: 8px 12px; min-width: 0; }
+.encontro-responder input:focus { outline: none; border-color: var(--roxo); }
+.encontro-responder button { border: 0; border-radius: 12px; background: var(--roxo); color: #fff; cursor: pointer; display: grid; place-items: center; }
+.encontro-responder button svg { width: 20px; height: 20px; }
+.ok-btn { background: var(--menta) !important; color: #fff !important; justify-self: start; }
+.pop-encontro { display: grid; gap: 2px; font-size: 0.85rem; }
+.pop-encontro a { margin-top: 4px; font-weight: 700; }
+@media (max-width: 480px) { .encontro-foto { width: 64px; height: 64px; } }
+
+/* =========================================================
+   Pet encontrado (alguém confirmou pelo QR)
+   ========================================================= */
+.qr-faixa.achado { background: var(--menta); }
+body[data-estado='encontrado'] { --estado: var(--menta); --estado-esc: var(--menta-esc); }
+body[data-estado='encontrado'] .cao { animation: pular 0.6s ease-in-out infinite alternate; }
+body[data-encontrado='true'] .modo-perdido-cartao { background: linear-gradient(135deg, var(--menta), var(--menta-esc)); color: #fff; }
+body[data-encontrado='true'] .modo-perdido-cartao h2, body[data-encontrado='true'] .modo-perdido-cartao .dica { color: #fff; }
+body[data-encontrado='true'] .mp-icone { background: rgba(255, 255, 255, 0.2); color: #fff; }
+body[data-encontrado='true'] #btnPerdido2 { background: #fff; color: var(--menta-esc); border-color: #fff; }
+body[data-encontrado='true'] .lateral-pet small { color: #a8f0d6; font-weight: 700; }
+body[data-encontrado='true'] .ponto-perdido { background: var(--menta); }
+.banner.encontrado { background: linear-gradient(120deg, var(--menta-esc), var(--menta)); background-size: 100% 100%; animation: none; box-shadow: 0 20px 40px -22px var(--menta-esc); }
+.banner.encontrado .banner-icone { color: var(--menta-esc); }
+.banner.encontrado .banner-encontrado { background: #fff; color: var(--menta-esc); }
+
+/* =========================================================
+   Conta, login e vínculo da coleira
+   ========================================================= */
+.login-fundo {
+  position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center; padding: 20px;
+  background: radial-gradient(circle at 20% 10%, #6f6fd6, var(--roxo-esc));
+}
+.login-cartao {
+  width: min(400px, 100%); background: #fff; border-radius: 26px; padding: 28px 24px;
+  display: grid; gap: 12px; box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.45); text-align: center;
+}
+.login-cartao .logo { margin: 0 auto; }
+.login-cartao h1 { font: 700 1.5rem/1.2 var(--titulo); color: var(--roxo-esc); }
+.login-cartao .campo { text-align: left; }
+.login-links { display: flex; justify-content: space-between; gap: 8px; }
+.link { background: none; border: 0; color: var(--roxo); font: 600 0.9rem 'Plus Jakarta Sans', sans-serif; cursor: pointer; text-decoration: underline; padding: 6px 2px; }
+.conta-lateral { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: auto 0 10px; padding: 10px 12px; border-radius: 14px; background: rgba(255, 255, 255, 0.1); color: #dcdcff; font-size: 0.8rem; }
+.conta-lateral[hidden] { display: none; }
+.conta-lateral span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.conta-lateral button { border: 0; border-radius: 10px; padding: 6px 10px; background: rgba(255, 255, 255, 0.18); color: #fff; font-weight: 700; cursor: pointer; }
+.vincular-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; margin-top: 10px; }
+.vincular-form input { font-family: ui-monospace, monospace; }
+.dica.ok { color: var(--menta-esc); }
+.dica.erro { color: var(--vermelho-esc); }
+.pilula.desativado { opacity: 0.45; pointer-events: none; }
+
+/* =========================================================
+   Rede de alerta do bairro
+   ========================================================= */
+.bz-garantias { list-style: none; display: grid; gap: 8px; margin: 12px 0 16px; padding: 0; }
+.bz-garantias li { display: flex; gap: 10px; align-items: start; font-size: 0.92rem; }
+.bz-garantias svg { width: 20px; height: 20px; color: var(--menta-esc); flex: none; margin-top: 2px; }
+.bz-form { display: grid; gap: 12px; }
+.bz-local { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bz-check { display: flex; gap: 10px; align-items: start; font-size: 0.9rem; cursor: pointer; }
+.bz-check input { width: 20px; height: 20px; margin-top: 1px; accent-color: var(--roxo); flex: none; }
+.bz-linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bz-grade { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; align-items: start; }
+.bz-grade[hidden], .bz-entrar[hidden] { display: none; }
+.bz-principal, .bz-lateral { display: grid; gap: 18px; min-width: 0; }
+.bz-mapa { height: 320px; border-radius: 18px; overflow: hidden; margin: 12px 0; border: 2px solid var(--linha); }
+.bz-lista { display: grid; gap: 12px; }
+.bz-vazio { text-align: center; padding: 14px; background: var(--lilas); border-radius: 14px; }
+.bz-alerta { border: 2px solid var(--linha); border-radius: 18px; padding: 14px; display: grid; gap: 10px; background: #fff; }
+.bz-alerta.meu { border-color: #ffb3bd; background: #fff6f7; }
+.bz-alerta-topo { display: flex; gap: 12px; align-items: center; }
+.bz-alerta-topo strong { display: flex; gap: 8px; align-items: center; font: 600 1.1rem/1.2 var(--titulo); color: var(--roxo-esc); }
+.bz-alerta-topo small { display: block; color: var(--suave); font-size: 0.82rem; margin-top: 2px; }
+.bz-foto { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; flex: none; background: var(--roxo-claro); }
+.bz-desc { font-size: 0.92rem; }
+.bz-ajudando { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--suave); }
+.bz-ajudando svg { width: 18px; height: 18px; color: var(--roxo); flex: none; }
+.bz-acoes { display: flex; flex-wrap: wrap; gap: 8px; }
+.bz-acoes .pilula { font-size: 0.85rem; padding: 8px 12px; min-height: 40px; }
+.bz-vi { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: var(--lilas); }
+.bz-vi[hidden] { display: none; }
+.bz-vi textarea, .bz-meu textarea { font: 16px/1.4 'Plus Jakarta Sans', sans-serif; border: 2px solid var(--linha); border-radius: 12px; padding: 8px 12px; width: 100%; }
+.bz-denunciar { justify-self: start; background: none; border: 0; color: var(--suave); font-size: 0.78rem; text-decoration: underline; cursor: pointer; padding: 4px 0; }
+.bz-meu { display: grid; gap: 10px; }
+.bz-meu.pedir { border: 3px solid var(--vermelho); }
+.bz-meu.publicado { border: 3px solid var(--coral); }
+.bz-meu h3 { font: 600 1rem var(--titulo); color: var(--roxo-esc); }
+.bz-meu h3 small { font: 500 0.8rem 'Plus Jakarta Sans', sans-serif; color: var(--suave); }
+.bz-avist { list-style: none; display: grid; gap: 8px; padding: 0; }
+.bz-avist li { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border-radius: 14px; background: #e7f0fc; font-size: 0.88rem; }
+.bz-avist li span { color: var(--suave); }
+.bz-avist li.vazio { background: var(--lilas); color: var(--suave); }
+.bz-avist .pilula { font-size: 0.8rem; padding: 6px 10px; min-height: 34px; }
+.bz-numeros { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.bz-numeros div { background: var(--lilas); border-radius: 16px; padding: 12px; display: grid; gap: 4px; }
+.bz-numeros b { font: 700 1.8rem/1 var(--titulo); color: var(--roxo); }
+.bz-numeros span { font-size: 0.78rem; color: var(--suave); }
+.bz-eu { display: grid; gap: 10px; }
+.bz-convidar { justify-self: start; }
+.bz-seguranca ul { display: grid; gap: 8px; padding-left: 18px; font-size: 0.88rem; margin-top: 8px; }
+@media (max-width: 1100px) { .bz-grade { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .bz-mapa { height: 240px; } .bz-numeros { grid-template-columns: 1fr; } }
+
+/* página da rede para vizinhos sem coleira */
+.pagina-bairro { background: var(--lilas); min-height: 100vh; }
+.bairro-topo { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; max-width: 1240px; margin: 0 auto; padding: 22px 20px 8px; }
+.bairro-topo h1 { font: 700 1.6rem/1.15 var(--titulo); color: var(--roxo-esc); }
+.bairro-topo p { color: var(--suave); }
+.bairro-topo > div:nth-child(2) { flex: 1; min-width: 220px; }
+.bairro-topo .conta-lateral { margin: 0; background: var(--roxo); }
+.bairro-conteudo { max-width: 1240px; margin: 0 auto; padding: 12px 20px 40px; }
+.qr-rodape a { color: var(--roxo); font-weight: 700; }
+.bz-form input:not([type='checkbox']), .bz-form select, .login-cartao input, .vincular-form input {
+  font: 16px/1.4 'Plus Jakarta Sans', sans-serif; color: var(--tinta); width: 100%; min-width: 0;
+  border: 2px solid var(--linha); border-radius: 12px; padding: 10px 12px; background: #fff;
+}
+.bz-form input:focus, .bz-form select:focus, .login-cartao input:focus, .vincular-form input:focus { outline: none; border-color: var(--roxo); }

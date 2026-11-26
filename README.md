@@ -1,13 +1,15 @@
 # Coleira inteligente para pet: projeto IoT
 
 Coleira com ESP32, GPS NEO-6M, sensor MAX30102 (batimentos e detecção de coleira no pet) e LED de alerta.
-A coleira envia os dados ao Firebase (Firestore). O site mostra a posição, os batimentos e o status da coleira em tempo real e avisa quando o pet sai da área segura. A coleira também manda um alerta no WhatsApp.
+O foco desta versão é **monitorar os sinais do pet e conferir se ele está na zona segura**. A coleira sincroniza pelo Wi-Fi de casa com o Firebase (Firestore): batimentos, saúde comparada com o normal dele, coleira no pet, bateria e posição dentro da área.
+
+**Sem localização em tempo real fora da área.** A coleira não tem chip de dados. Quando o pet sai da área, ela registra o ponto e a hora da saída, envia esse aviso e o LED passa a piscar. A partir daí, o diferencial é o **QR da coleira**: quem encontrar o pet escaneia, conta como ele está, envia a localização exata do próprio celular e conversa com o tutor pelo site. Rastreamento em tempo real (4G/LTE-M) fica como melhoria futura.
 
 ```
-ESP32 (coleira) ──HTTPS──> Firestore ──tempo real──> Site (Leaflet)
-       │                       ^                      │
-       └── WhatsApp (CallMeBot)│                      └── salva a área segura (config/area)
-                               └──────── a coleira lê a área a cada 1 min
+ESP32 (coleira) ──Wi-Fi──> Firestore <──> Site do tutor (Leaflet)
+  sinais vitais,              ^
+  área segura, saída          └── Página do QR (celular de quem achou o pet):
+                                   localização exata, estado do pet, foto, conversa
 ```
 
 ## Pastas
@@ -15,8 +17,8 @@ ESP32 (coleira) ──HTTPS──> Firestore ──tempo real──> Site (Leafl
 | Pasta | Conteúdo |
 |---|---|
 | `modelo3d/` | STLs para imprimir, `coleira.py` (modelo paramétrico) e `coleira_montada.glb` (montagem) |
-| `firmware/coleira_esp32/` | Código da ESP32 (`coleira_esp32.ino` e `config.h`) |
-| `site/` | Ferramenta de acompanhamento (`index.html`, `style.css`, `script.js`, `firebase-config.js`) e `firestore.rules` |
+| `firmware/coleira_esp32/` | Código da ESP32 (`coleira_esp32.ino`, `config.h`, `telegram.h`, `certificados.h`) |
+| `site/` | Painel do tutor (`index.html`, `script.js`), página do QR (`perdido.html`), rede do bairro para vizinhos (`bairro.html`), login (`conta.js`), dados (`perfil-dados.js`, `encontros.js`, `comunidade.js`, `comunidade-ui.js`) e `firestore.rules` |
 
 ## 1. Site: rodar já, sem coleira
 
@@ -27,37 +29,77 @@ ESP32 (coleira) ──HTTPS──> Firestore ──tempo real──> Site (Leafl
    - Os alertas só passam a usar a nova área depois de salvar.
    - Depois de salvar, um aviso com **Desfazer** fica alguns segundos na tela e restaura a área anterior.
 
-## 2. Firebase
+## 2. Firebase (com login e regras de segurança)
 
 1. Use o projeto que vocês já criaram (ou crie um em console.firebase.google.com), com o **Firestore Database** ativado.
-2. Em *Firestore > Regras*, cole o conteúdo de `site/firestore.rules` e publique. Essas regras são abertas, servem só para o protótipo.
-3. Em *Configurações do projeto > Seus apps*, copie o `firebaseConfig` para `site/firebase-config.js`.
-4. Abra o site: o selo muda para **Ao vivo**. Os botões de simulação continuam funcionando e agora gravam no Firestore como se fossem a coleira. Isso serve para testar tudo antes de montar o hardware.
+2. Em *Authentication > Sign-in method*, ative **E-mail/senha** (tutores e vizinhos) e **Anônimo** (coleira e quem escaneia o QR, sem pedir dados).
+3. Em *Firestore > Regras*, cole o conteúdo de `site/firestore.rules` e publique.
+4. Em *Configurações do projeto > Seus apps*, copie o `firebaseConfig` para `site/firebase-config.js`.
+5. **Troque o `PET_ID`** (no `firebase-config.js` e no `config.h`) por algo difícil de adivinhar, por exemplo `rex-7k2q9m`. O primeiro a entrar no painel vira o dono do pet.
+6. Abra o site e **crie a sua conta**. Ela fica registrada como dona do pet em `acesso/{PET_ID}`. Os botões da área de testes continuam funcionando e gravam no Firestore como se fossem a coleira.
+7. Grave o firmware, abra o Monitor Serial e copie a linha **UID DA COLEIRA**. No site, vá em *Área de testes > Vincular a coleira* e cole. A partir daí só essa coleira (e você) gravam os dados do pet.
 
-Coleções usadas:
+### Quem pode ver o quê
 
-| Documento | Quem escreve | Campos |
-|---|---|---|
-| `pets/rex` | coleira | `lat`, `lng`, `gpsFix`, `satelites`, `batimentos`, `coleiraNoPet`, `dentroArea`, `distancia`, `bateria`, `atualizadoEm` |
-| `config/area` | site | `lat`, `lng`, `raio` |
-| `alertas/*` | coleira | `pet`, `tipo`, `mensagem`, `lat`, `lng`, `criadoEm` |
+| Dado | Onde | Quem lê | Quem grava |
+|---|---|---|---|
+| Dono e coleira vinculada | `acesso/{pet}` | tutor | tutor |
+| Estado da coleira (posição, batimentos, bateria) | `pets/{pet}` | tutor e coleira | coleira (e tutor pela área de testes) |
+| Área segura, saúde, alertas | `pets/{pet}/config`, `/saude`, `/alertas` | tutor e coleira | coleira e tutor |
+| Encontros pelo QR | `pets/{pet}/encontros` | tutor e quem criou | quem achou cria; tutor e quem achou conversam |
+| Perfil do QR (nome, foto, recado, telefone, perdido) | `perfis/{pet}` | qualquer pessoa, só pelo id (não dá para listar) | tutor; a coleira só muda `perdido` |
+| Rede do bairro | `vizinhos`, `bairro`, `denuncias` | ver "Rede de alerta do bairro" | |
+
+A posição da coleira em casa revela o endereço, por isso ela nunca é pública. As regras foram testadas no emulador do Firebase com 76 casos (estranho, quem achou o pet, vizinho, coleira antiga, campos extras), e o site foi testado de ponta a ponta contra os emuladores.
+
+**Testar com os emuladores (opcional):** `npx firebase emulators:start --only firestore,auth` (Firestore na porta 8089, Auth na 9099) e abra o site em `localhost` com `?emulador` no endereço.
 
 ## Modo pet perdido
 
 1. No painel, em **Perfil e QR da coleira**, coloque a foto, o WhatsApp do tutor e um recado para quem encontrar o pet (cuidados, remédios, temperamento). Depois clique em **Salvar perfil**.
 2. Clique em **Baixar QR**, imprima com 22 × 22 mm e cole no rebaixo da tampa. Gere o QR pelo site **publicado**: aberto pelo Live Server, ele aponta para um endereço que só existe no seu computador.
 3. Se o pet sumir, clique em **Meu pet sumiu** e confirme. A partir daí:
-   - o LED da coleira pisca em dupla, sem parar, e a coleira envia a posição a cada 3 s;
+   - o LED da coleira pisca em dupla, sem parar (fora da área ele já pisca sozinho);
    - a página do QR (`perdido.html`) mostra "Estou perdido!" e pede ajuda;
    - o botão **Pedir ajuda no WhatsApp** monta uma mensagem com a última posição e o link da página do QR, para mandar a vizinhos e grupos do bairro.
-4. Quem escaneia o QR pode enviar a localização do próprio celular, deixar um recado e o contato, ou chamar o tutor no WhatsApp. O painel avisa na hora, com som e notificação, e marca no mapa um pino azul com um olho.
-5. Quando o pet voltar, clique em **Pet encontrado**.
+4. Quem escaneia o QR informa como o pet está (bem, assustado, machucado), onde ele vai ficar (comigo, no local, levei a um lugar), uma mensagem, nome, telefone e uma foto opcional. Ao tocar em **Avisar o tutor**, a página pega a **localização exata do celular** e cria um *encontro*.
+5. **O status do pet muda para "Pet encontrado"** no painel (menu, faixa do topo, cartão do modo perdido e Início), com nome, telefone, hora, estado do pet e onde ele está de quem confirmou. Quem escanear o QR depois vê "Já me encontraram! Meu tutor foi avisado". O painel avisa na hora (som e notificação) e mostra o cartão do encontro no Início e em Pet perdido: ponto exato no mapa com o círculo de precisão, **Traçar rota até lá**, WhatsApp e ligação, estado do pet, foto e uma **conversa** com quem encontrou (respostas rápidas como "Estou a caminho!"). A pessoa vê as respostas na própria página do QR e pode atualizar a localização se mudar de lugar.
+6. Quando estiver com o pet, clique em **Já estou com ele** (faixa do topo, cartão ou modo perdido). Os encontros são encerrados, o modo perdido desliga, o alerta do bairro é encerrado, o aviso some de todas as telas e a página do QR agradece. O histórico de alertas registra quem encontrou.
 
-No modo simulação, abra o painel e a `perdido.html` em duas abas do mesmo navegador: uma conversa com a outra. O botão "Alguém encontrou o pet", na área de testes, simula um aviso.
+Fora da área, o painel mostra o aviso "saiu da área segura" com a hora e o **último ponto registrado**, além dos atalhos **Ativar modo perdido**, **Pedir ajuda no WhatsApp** e **Entendi** (esconde o aviso até a próxima saída).
 
-Novas coleções: `perfis/{pet}` (perfil público e o campo `perdido`) e avisos do tipo `avistamento` em `alertas`. Atualize as regras com o novo `site/firestore.rules`.
+No modo simulação, abra o painel e a `perdido.html` em duas abas do mesmo navegador: uma conversa com a outra. O botão "Alguém encontrou o pet", na área de testes, simula um encontro. Na simulação, quando o pet sai da área, a coleira para de sincronizar (como faria sem Wi-Fi) até ele voltar.
 
-**Privacidade:** a página do QR é pública e mostra o telefone cadastrado. Coloque só o número que você aceita divulgar.
+Coleções: `perfis/{pet}` (perfil público e o campo `perdido`), `encontros/{id}` (pet, lat, lng, precisao, achador {nome, telefone}, mensagem, estadoPet, ondeFica, foto, status aberto/a_caminho/resolvido, respostas [{de, texto, em}]) e avisos do tipo `avistamento` em `alertas`. Atualize as regras com o novo `site/firestore.rules`.
+
+**Privacidade:** a página do QR é pública e mostra o telefone cadastrado. Coloque só o número que você aceita divulgar. Nome e telefone de quem encontrou ficam visíveis apenas para o tutor.
+
+## Rede de alerta do bairro
+
+Vizinhos que ajudam a trazer pets de volta. Fica no menu **Rede do bairro** do painel e em `bairro.html`, para quem não tem a coleira (o link vai no rodapé da página do QR e no botão **Convidar vizinhos**).
+
+- **Entrar na rede:** apelido, bairro, região aproximada (pela localização do celular ou pela área segura) e raio de alerta de 1 a 3 km. Só é preciso aceitar as regras: não pedir dinheiro, não expor endereços e só publicar alertas verdadeiros.
+- **Alerta do bairro:** ao ativar o modo perdido, o alerta é publicado sozinho (dá para desligar) para os vizinhos num raio de até 3 km. Ele mostra foto, nome, descrição e um círculo de ~1 km, nunca o endereço nem a posição da coleira.
+- **Estou procurando:** o vizinho avisa que está ajudando; o tutor vê os apelidos.
+- **Vi este pet:** envia a localização exata de onde viu e uma nota. **Só o tutor vê o ponto**, no mapa da rede, com rota.
+- **Está comigo:** abre a página do QR do pet e segue o fluxo do encontro (status "Pet encontrado").
+- **Compartilhar:** mensagem pronta para o WhatsApp do bairro, com o link público do QR.
+- **Encerramento automático:** quando o tutor marca que está com o pet, o alerta sai da lista e entra no contador "pets que voltaram para casa".
+- **Segurança:** dicas contra golpes (nunca pagar adiantado, pedir foto na hora, entrega em lugar público) e botão **Denunciar**, que grava em `denuncias` para moderação pelo console.
+
+Como a privacidade é garantida (nas regras, não só na tela):
+
+| Coleção | O que guarda | Quem lê |
+|---|---|---|
+| `vizinhos/{uid}` | apelido, bairro, quadrícula de ~1 km (`celula`), raio | só o próprio vizinho |
+| `bairro/{pet}` | alerta: nome, foto, descrição, bairro, quadrícula, status | vizinhos da rede e o tutor |
+| `bairro/{pet}/ajudantes/{uid}` | apelido de quem está procurando | vizinhos e o tutor |
+| `bairro/{pet}/avistamentos/{id}` | ponto exato, nota | só o tutor e quem enviou |
+| `denuncias/{id}` | motivo | ninguém pelo app (só o console) |
+
+Só o dono de um pet com coleira pode publicar o alerta desse pet, e só um alerta por pet. A rede exige conta com e-mail (logins anônimos não veem nada). Os pets que estão em casa nunca aparecem.
+
+Na simulação, a rede já vem com dois pets perdidos de exemplo. O botão **Vizinhos ajudando na busca** (área de testes) simula vizinhos procurando e um avistamento do seu pet.
 
 ## Saúde comparada com o próprio pet
 
@@ -84,19 +126,17 @@ Para testar sem hardware, use a área de testes: "Gerar 14 dias de histórico" e
 
 ## Bot do Telegram (reaproveitado do projeto anterior)
 
-O bot do projeto anterior (ESP32 + GPS + UniversalTelegramBot) agora faz parte da coleira, no arquivo `firmware/coleira_esp32/telegram.h`. Ele usa os mesmos dados em tempo real que o site.
+O bot do projeto anterior (ESP32 + GPS + UniversalTelegramBot) agora faz parte da coleira, no arquivo `firmware/coleira_esp32/telegram.h`. Ele usa os mesmos dados que o site e funciona enquanto a coleira está no Wi-Fi.
 
 | Botão / comando | O que faz |
 |---|---|
-| 📍 Localização · `/localizacao` | Pino no mapa + link, precisão do GPS, distância de casa e se está dentro ou fora da área. Sem sinal, mostra a última posição conhecida e há quanto tempo. |
-| 🛰️ Ao vivo · `/aovivo` | Localização em tempo real do Telegram por 15 min: o pino anda sozinho a cada 10 s |
-| ⏹️ Parar ao vivo · `/parar` | Encerra o ao vivo |
+| 📍 Localização · `/localizacao` | Pino da última posição registrada + link, precisão do GPS, distância de casa e se está dentro ou fora da área. |
 | 🐾 Status · `/status` | Coleira no pet, batimentos, bateria, GPS, Wi-Fi |
 | ❤️ Saúde · `/saude` | Batimento em repouso x normal dele, atividade do dia |
-| 🚨 Pet perdido · `/perdido` | Liga o modo pet perdido: LED, site e página do QR. Todos os IDs recebem o ao vivo. |
+| 🚨 Pet perdido · `/perdido` | Liga o modo pet perdido: LED, site e página do QR |
 | 🏠 Pet encontrado · `/encontrado` | Desliga o modo perdido |
 
-A coleira também manda para todos os IDs autorizados os alertas de saída da área, coleira removida, bateria baixa e batimento fora do normal. Quando o pet sai da área, ou quando o modo perdido é ligado pelo site, o ao vivo começa sozinho.
+A coleira também manda para todos os IDs autorizados os alertas de saída da área (com o último ponto registrado), coleira removida, bateria baixa e batimento fora do normal. Alertas gerados sem Wi-Fi ficam na fila e são enviados quando a coleira volta a conectar.
 
 **Configuração (no `config.h`):**
 1. No @BotFather, pegue o token **completo**, no formato `1234567890:AAH...`, e coloque em `TELEGRAM_TOKEN`.
@@ -108,6 +148,8 @@ A coleira também manda para todos os IDs autorizados os alertas de saída da á
 O WhatsApp (CallMeBot) agora vem desligado (`WHATSAPP_ATIVO 0`), porque o Telegram já cobre os alertas. Dá para ligar os dois.
 
 ## 3. Firmware (Arduino IDE)
+
+Segurança da coleira: ela entra no Firebase com uma conta anônima própria (o UID aparece no Monitor Serial para vincular no site) e confere o certificado do Google (`certificados.h`) e do Telegram em todas as conexões. Assim, ninguém na mesma rede Wi-Fi consegue se passar pelo servidor e roubar o acesso. Para trocar de coleira, cole o UID da nova; a antiga perde o acesso na hora.
 
 1. Instale a placa **esp32** (Espressif) e escolha "ESP32 Dev Module".
 2. Pelo Gerenciador de Bibliotecas, instale **UniversalTelegramBot**, **TinyGPSPlus**, **SparkFun MAX3010x Pulse and Proximity Sensor Library** e **ArduinoJson** (v7).
@@ -127,8 +169,8 @@ Para mudar medidas (fita mais larga, outra bateria), edite os parâmetros no top
 
 ## Limitações do protótipo
 
-- **Wi-Fi:** a coleira só envia dados quando está em uma rede conhecida. Na rua, sem Wi-Fi, o LED continua alertando, mas o site para de receber posições e mostra "sem sinal". Para rastrear fora de casa, o próximo passo é um módulo 4G/LTE-M (por exemplo, SIM7080G) ou LoRa.
+- **Sem tempo real fora da área (decisão de projeto):** a coleira só sincroniza pelo Wi-Fi. Fora da área, o site mostra o último ponto registrado e a ajuda vem pelo QR. Melhoria futura: módulo 4G/LTE-M (por exemplo, SIM7080G) ou LoRa para rastrear em tempo real.
 - **Bateria:** com 1000 mAh, a autonomia estimada fica entre 8 e 10 h com o GPS sempre ligado.
 - **Batimentos:** o sensor é óptico e falha em pelo denso. A leitura é uma estimativa.
 - **Tamanho:** o módulo principal (80 × 44 × 27 mm, ~120 g) serve para cães médios e grandes. Para gatos e cães pequenos, use um ESP32-C3 SuperMini e uma bateria menor.
-- **Segurança:** as regras do Firestore e a chave no firmware são de protótipo. Antes de uso real, adicione Firebase Auth.
+- **Segurança:** login, regras por dono e certificados já estão no projeto. Ainda faltam, para uso aberto ao público: limite de envios por pessoa (App Check ou Cloud Functions, plano Blaze), moderação ativa das denúncias e notificação push com o site fechado (Cloud Messaging). Hoje o aviso de pet perdido perto chega enquanto o site está aberto.

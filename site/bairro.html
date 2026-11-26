@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rede de alerta do bairro | Coleira inteligente</title>
+    <meta name="description" content="Vizinhos que ajudam a trazer pets perdidos de volta para casa." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="pagina-bairro">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-pata" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="5" ry="4.2"/><circle cx="5.5" cy="10" r="2.2"/><circle cx="9.5" cy="6.2" r="2.3"/><circle cx="14.5" cy="6.2" r="2.3"/><circle cx="18.5" cy="10" r="2.2"/></symbol>
+        <symbol id="i-casa" viewBox="0 0 24 24"><path d="M12 3 2.5 11h2.7v9h5.3v-5.5h3v5.5h5.3v-9h2.7z"/></symbol>
+        <symbol id="i-desfazer" viewBox="0 0 24 24"><path d="M9 5 3.5 10.5 9 16v-3.8c4.6 0 7.6 1.4 9.7 5.3-.6-5.4-3.4-9.6-9.7-10.3z"/></symbol>
+        <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M3 20.5 21.5 12 3 3.5v6.6l13 1.9-13 1.9z"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="m9.5 16.6-4.6-4.6-1.6 1.6 6.2 6.2L21 8.3l-1.6-1.6z"/></symbol>
+        <symbol id="i-x" viewBox="0 0 24 24"><path d="m18.3 7.1-1.4-1.4L12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z"/></symbol>
+        <symbol id="i-corre" viewBox="0 0 24 24"><path d="M13.5 5.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3A7.3 7.3 0 0 0 19 13v-2a5 5 0 0 1-4.3-2.4l-1-1.6a2 2 0 0 0-2.5-.8L6 8.3V13h2V9.6z"/></symbol>
+        <symbol id="i-bateria" viewBox="0 0 24 24"><path d="M16 4h-2V2h-4v2H8a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zm-3 14h-2v-2h2zm0-4h-2V8h2z"/></symbol>
+        <symbol id="i-tag" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7v6a7 7 0 0 0 14 0V9a7 7 0 0 0-7-7zm0 5a1.6 1.6 0 1 1 0-3.2A1.6 1.6 0 0 1 12 7z"/></symbol>
+        <symbol id="i-sino" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.5-2.5h-5A2.5 2.5 0 0 0 12 22zm7-6V11a7 7 0 0 0-5.5-6.8V3.5a1.5 1.5 0 0 0-3 0v.7A7 7 0 0 0 5 11v5l-2 2v1h18v-1z"/></symbol>
+        <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></symbol>
+        <symbol id="i-zap" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2s-1 .3-3.4-.7a11.7 11.7 0 0 1-4.6-4.1c-.4-.5-1-1.6-1-2.9a3.2 3.2 0 0 1 1-2.4c.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .6l-.4.6-.4.5c-.2.2-.3.3-.1.7a8.4 8.4 0 0 0 1.6 2 7.4 7.4 0 0 0 2.3 1.4c.3.2.5.1.7-.1l.9-1.1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.3s.1.7-.1 1.3z"/></symbol>
+        <symbol id="i-vizinhos" viewBox="0 0 24 24"><path d="M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zm7.5 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM9 13c-3.3 0-7 1.6-7 4.2V20h14v-2.8C16 14.6 12.3 13 9 13zm7.5 0c-.6 0-1.2.1-1.8.2 1.4 1 2.3 2.3 2.3 4V20H22v-2.6c0-2.6-3.1-4.4-5.5-4.4z"/></symbol>
+        <symbol id="i-cadeado" viewBox="0 0 24 24"><path d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 0 1 6 0v3zm3 4a2 2 0 0 1 1 3.7V19h-2v-1.3A2 2 0 0 1 12 14z"/></symbol>
+        <symbol id="i-olho" viewBox="0 0 24 24"><path d="M12 5C6.5 5 2.7 9.1 1.5 12c1.2 2.9 5 7 10.5 7s9.3-4.1 10.5-7C21.3 9.1 17.5 5 12 5zm0 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0-6.2a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4z"/></symbol>
+        <symbol id="i-megafone" viewBox="0 0 24 24"><path d="M18 3v18l-6-4H7l1.4 4H6.3L4.9 17H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h8zm2 5.5a4 4 0 0 1 0 7z"/></symbol>
+        <symbol id="i-qr" viewBox="0 0 24 24"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm2 2h2v2h-2zm-6 2h2v2h-2zm4 0h2v4h-4v-2h2zm-4 2h2v2h-2z"/></symbol>
+        <symbol id="i-foto" viewBox="0 0 24 24"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></symbol>
+        <symbol id="i-coracao" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.2 2.3 4 6.3 4c2.2 0 3.7 1.3 4.7 2.7h2C14 5.3 15.5 4 17.7 4c4 0 6 4.2 4.3 7.7C19.5 16.4 12 21 12 21z"/></symbol>
+        <!-- carinha do cachorro -->
+        <symbol id="i-cao" viewBox="0 0 120 120">
+          <ellipse cx="27" cy="52" rx="17" ry="30" transform="rotate(18 27 52)" fill="#8a5a3b"/>
+          <ellipse cx="93" cy="52" rx="17" ry="30" transform="rotate(-18 93 52)" fill="#8a5a3b"/>
+          <circle cx="60" cy="58" r="38" fill="#e8b07a"/>
+          <ellipse cx="60" cy="76" rx="22" ry="17" fill="#fbe3c6"/>
+          <ellipse cx="76" cy="44" rx="11" ry="10" fill="#c98a55"/>
+          <circle cx="45" cy="52" r="5.5" fill="#1d1b3a"/><circle cx="75" cy="52" r="5.5" fill="#1d1b3a"/>
+          <circle cx="47" cy="50" r="1.8" fill="#fff"/><circle cx="77" cy="50" r="1.8" fill="#fff"/>
+          <ellipse cx="60" cy="68" rx="8" ry="5.5" fill="#1d1b3a"/>
+          <path d="M60 73v5m-8 1c3 4 13 4 16 0" stroke="#1d1b3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M28 92c18 10 46 10 64 0l2 9c-20 11-48 11-68 0z" fill="#ff7a45"/>
+          <circle cx="60" cy="106" r="7" fill="#ffc94a" stroke="#e0a41f" stroke-width="2"/>
+        </symbol>
+      </defs>
+    </svg>
+    <header class="bairro-topo">
+      <span class="logo"><svg><use href="#i-pata"/></svg></span>
+      <div>
+        <h1>Rede de alerta do bairro</h1>
+        <p>Vizinhos que ajudam a trazer pets perdidos de volta para casa. Você não precisa ter a coleira para participar.</p>
+      </div>
+      <div class="conta-lateral" id="contaLateral" hidden>
+        <span id="contaEmail"></span>
+        <button type="button" id="btnSair">Sair</button>
+      </div>
+    </header>
+    <main class="bairro-conteudo">
+      <div id="comunidade"><p class="dica">Carregando...</p></div>
+    </main>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script type="module" src="bairro.js"></script>
+  </body>
+</html>

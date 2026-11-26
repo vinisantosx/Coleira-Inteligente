@@ -3,19 +3,21 @@
 //  Bot do Telegram da coleira
 //  Reaproveita o projeto anterior (ESP32 + GPS + UniversalTelegramBot):
 //  handleNewMessages, validateSender e sendLocation continuam aqui, agora
-//  ligados ao estado em tempo real da coleira.
+//  ligados ao estado da coleira.
+//
+//  Sem chip de dados: o bot so funciona quando a coleira esta no Wi-Fi
+//  (dentro da area segura). Fora dela a coleira nao tem internet; o aviso
+//  de saida e enviado com o ultimo ponto registrado e, depois disso, quem
+//  encontrar o pet avisa o tutor pelo QR da coleira.
 //
 //  Botoes do teclado (ou comandos):
 //    Localizacao   /localizacao  -> pino no mapa + link, precisao, distancia de casa
-//    Ao vivo       /aovivo       -> localizacao em tempo real no Telegram (15 min)
-//    Parar         /parar        -> encerra o ao vivo
 //    Status        /status       -> coleira no pet, bateria, batimentos, area
 //    Saude         /saude        -> batimento em repouso x normal dele, atividade do dia
 //    Pet perdido   /perdido      -> liga o modo pet perdido (LED + site + pagina do QR)
 //    Encontrado    /encontrado   -> desliga o modo pet perdido
 //  A coleira tambem manda os alertas (saiu da area, coleira removida, bateria,
-//  batimento fora do normal) para todos os IDs autorizados e, quando o pet sai
-//  da area ou o modo perdido e ligado, comeca o "ao vivo" sozinha.
+//  batimento fora do normal) para todos os IDs autorizados.
 //
 //  Este arquivo e incluido no meio do coleira_esp32.ino (usa estado, trava,
 //  requisicao, urlFirestore...). Biblioteca: UniversalTelegramBot (Brian Lough).
@@ -33,8 +35,6 @@ int qtdIds = 0;
 const String LOCATION = "localizacao";
 const String START = "/start";
 
-struct AoVivo { String chat; int msgId = 0; unsigned long ate = 0, ult = 0; };
-AoVivo aoVivo[SENDER_ID_COUNT];
 
 // ------------------------------------------------ util
 void carregarIds() {
@@ -63,10 +63,9 @@ String chamarTelegram(const char *metodo, JsonDocument &payload) {
 }
 
 String teclado() {
-  return F("[[\"📍 Localização\",\"🛰️ Ao vivo\"],"
-           "[\"🐾 Status\",\"❤️ Saúde\"],"
-           "[\"🚨 Pet perdido\",\"🏠 Pet encontrado\"],"
-           "[\"⏹️ Parar ao vivo\"]]");
+  return F("[[\"📍 Localização\",\"🐾 Status\"],"
+           "[\"❤️ Saúde\"],"
+           "[\"🚨 Pet perdido\",\"🏠 Pet encontrado\"]]");
 }
 
 String linkMapa(double lat, double lng) {
@@ -80,7 +79,7 @@ String tempoDesde(unsigned long ms) {
   return String(s / 3600) + " h " + String((s % 3600) / 60) + " min";
 }
 
-// pino nativo do Telegram; com livePeriod > 0 vira "localizacao em tempo real"
+// pino nativo do Telegram
 int enviarPino(const String &chatId, double lat, double lng, float precisaoM, int livePeriod = 0) {
   JsonDocument p;
   p["chat_id"] = chatId;
@@ -123,63 +122,6 @@ void sendLocation(String chatId) {
   message += linkMapa(e.lat, e.lng);
 
   bot.sendMessage(chatId, message, "");
-}
-
-// ------------------------------------------------ ao vivo
-int slotAoVivo(const String &chatId, bool criar) {
-  for (int i = 0; i < SENDER_ID_COUNT; i++) if (aoVivo[i].msgId && aoVivo[i].chat == chatId) return i;
-  if (!criar) return -1;
-  for (int i = 0; i < SENDER_ID_COUNT; i++) if (!aoVivo[i].msgId) return i;
-  return -1;
-}
-
-void iniciarAoVivo(const String &chatId, bool avisar = true) {
-  xSemaphoreTake(trava, portMAX_DELAY);
-  Estado e = estado;
-  xSemaphoreGive(trava);
-  if (e.lat == 0 && e.lng == 0) { if (avisar) bot.sendMessage(chatId, "🛰️ Ainda sem sinal de GPS para começar o ao vivo.", ""); return; }
-  int i = slotAoVivo(chatId, true);
-  if (i < 0) return;
-  if (aoVivo[i].msgId && millis() < aoVivo[i].ate) {
-    aoVivo[i].ate = millis() + AO_VIVO_MIN * 60000UL;    // ja estava ao vivo: so estende
-    if (avisar) bot.sendMessage(chatId, "🛰️ Ao vivo estendido por mais " + String(AO_VIVO_MIN) + " min.", "");
-    return;
-  }
-  int msg = enviarPino(chatId, e.lat, e.lng, e.precisaoM, AO_VIVO_MIN * 60);
-  if (!msg) { if (avisar) bot.sendMessage(chatId, "Não consegui iniciar o ao vivo. Tente de novo.", ""); return; }
-  aoVivo[i].chat = chatId; aoVivo[i].msgId = msg;
-  aoVivo[i].ate = millis() + AO_VIVO_MIN * 60000UL; aoVivo[i].ult = millis();
-  if (avisar) bot.sendMessage(chatId, "🛰️ Localização de " + String(PET_NOME) + " ao vivo por " + String(AO_VIVO_MIN) +
-                              " min. O pino acima se move sozinho. Envie \"Parar ao vivo\" para encerrar.", "");
-  Serial.printf("[telegram] ao vivo iniciado para %s\n", chatId.c_str());
-}
-
-void pararAoVivo(int i) {
-  if (i < 0 || !aoVivo[i].msgId) return;
-  JsonDocument p;
-  p["chat_id"] = aoVivo[i].chat;
-  p["message_id"] = aoVivo[i].msgId;
-  chamarTelegram("stopMessageLiveLocation", p);
-  aoVivo[i].msgId = 0;
-}
-
-void atualizarAoVivo() {
-  xSemaphoreTake(trava, portMAX_DELAY);
-  Estado e = estado;
-  xSemaphoreGive(trava);
-  for (int i = 0; i < SENDER_ID_COUNT; i++) {
-    if (!aoVivo[i].msgId) continue;
-    if (millis() > aoVivo[i].ate) { pararAoVivo(i); continue; }
-    if (millis() - aoVivo[i].ult < INTERVALO_AO_VIVO_MS || !e.gpsFix) continue;
-    aoVivo[i].ult = millis();
-    JsonDocument p;
-    p["chat_id"] = aoVivo[i].chat;
-    p["message_id"] = aoVivo[i].msgId;
-    p["latitude"] = e.lat;
-    p["longitude"] = e.lng;
-    if (e.precisaoM > 0) p["horizontal_accuracy"] = min(e.precisaoM, 1500.0f);
-    chamarTelegram("editMessageLiveLocation", p);
-  }
 }
 
 // ------------------------------------------------ status e saude
@@ -234,8 +176,9 @@ void definirPerdidoRemoto(bool perdido, const String &chatId) {
   else f["perdidoDesde"]["nullValue"] = nullptr;
   String corpo; serializeJson(doc, corpo);
   // updateMask: muda so esses campos e preserva foto, telefone e recado do perfil
+  // (encontrado fica fora do corpo, entao e apagado: comeca ou termina uma busca nova)
   int cod = requisicao("PATCH", urlFirestore("perfis/" PET_ID) +
-                       "&updateMask.fieldPaths=perdido&updateMask.fieldPaths=perdidoDesde", corpo);
+                       "&updateMask.fieldPaths=perdido&updateMask.fieldPaths=perdidoDesde&updateMask.fieldPaths=encontrado", corpo);
   if (cod != 200) { bot.sendMessage(chatId, "Não consegui atualizar o modo perdido (erro " + String(cod) + ").", ""); return; }
 
   xSemaphoreTake(trava, portMAX_DELAY);
@@ -253,15 +196,13 @@ void definirPerdidoRemoto(bool perdido, const String &chatId) {
   g["lng"]["doubleValue"] = ln;
   if (iso.length()) g["criadoEm"]["timestampValue"] = iso;
   String c2; serializeJson(al, c2);
-  requisicao("POST", urlFirestore("alertas"), c2);
+  requisicao("POST", urlFirestore("pets/" PET_ID "/alertas"), c2);
 
   if (perdido) {
-    bot.sendMessage(chatId, "🚨 Modo pet perdido LIGADO.\nO LED pisca sem parar, a página do QR pede ajuda e "
-                            "você recebe a localização ao vivo.", "");
-    for (int i = 0; i < qtdIds; i++) iniciarAoVivo(validSenderIds[i]);
+    bot.sendMessage(chatId, "🚨 Modo pet perdido LIGADO.\nO LED pisca sem parar e a página do QR pede ajuda. "
+                            "Quando alguém escanear e avisar, o ponto exato aparece no site.", "");
   } else {
     bot.sendMessage(chatId, "🏠 Que bom! Modo pet perdido desligado.", "");
-    for (int i = 0; i < SENDER_ID_COUNT; i++) pararAoVivo(i);
   }
 }
 
@@ -284,20 +225,11 @@ void handleNewMessages(int numNewMessages) {
     if (text.equalsIgnoreCase(START) || text.indexOf("ajuda") >= 0 || text.indexOf("menu") >= 0) {
       String message = "Olá! Sou a coleira de " + String(PET_NOME) + " 🐾\n\n";
       message += "Use os botões abaixo:\n";
-      message += "📍 Localização: onde ele está agora\n";
-      message += "🛰️ Ao vivo: acompanhar em tempo real (" + String(AO_VIVO_MIN) + " min)\n";
+      message += "📍 Localização: última posição registrada\n";
       message += "🐾 Status: coleira, bateria e área\n";
       message += "❤️ Saúde: batimento em repouso e atividade\n";
       message += "🚨 Pet perdido / 🏠 Pet encontrado";
       bot.sendMessageWithReplyKeyboard(chatId, message, "", teclado(), true);
-    }
-    else if (text.indexOf("parar") >= 0) {
-      int s = slotAoVivo(chatId, false);
-      if (s >= 0) { pararAoVivo(s); bot.sendMessage(chatId, "⏹️ Ao vivo encerrado.", ""); }
-      else bot.sendMessage(chatId, "Não há localização ao vivo ativa.", "");
-    }
-    else if (text.indexOf("ao vivo") >= 0 || text.indexOf("aovivo") >= 0) {
-      iniciarAoVivo(chatId);
     }
     else if (text.indexOf(LOCATION) >= 0 || text.indexOf("localiza") >= 0 || text.indexOf("onde") >= 0) {
       sendLocation(chatId);
@@ -339,33 +271,28 @@ void alertaTelegram(TipoEvento tipo, double lat, double lng) {
                  tipo == COLEIRA_COLOCADA ? "✅ " : tipo == BATERIA_BAIXA ? "🔋 " : "❤️ ";
   String m = icone + texto;
   if (lat != 0) m += "\n" + linkMapa(lat, lng);
-  for (int i = 0; i < qtdIds; i++) {
-    bot.sendMessage(validSenderIds[i], m, "");
-    if (tipo == SAIU_AREA) iniciarAoVivo(validSenderIds[i]);   // fugiu: ja comeca o ao vivo
-  }
+  if (tipo == SAIU_AREA) m += "\nÚltimo ponto registrado. Fora da área a coleira fica sem internet: o LED pisca e "
+                            "quem encontrar pode avisar você pelo QR.";
+  for (int i = 0; i < qtdIds; i++) bot.sendMessage(validSenderIds[i], m, "");
 }
 
 // o tutor ligou/desligou o modo perdido pelo site
 void avisarPerdidoPeloSite(bool perdido) {
   for (int i = 0; i < qtdIds; i++) {
     if (perdido) {
-      bot.sendMessage(validSenderIds[i], "🚨 Modo pet perdido LIGADO pelo site. Enviando a localização ao vivo.", "");
-      iniciarAoVivo(validSenderIds[i], false);
+      bot.sendMessage(validSenderIds[i], "🚨 Modo pet perdido LIGADO pelo site. A página do QR já está pedindo ajuda.", "");
     } else {
       bot.sendMessage(validSenderIds[i], "🏠 Modo pet perdido desligado pelo site.", "");
     }
   }
-  if (!perdido) for (int i = 0; i < SENDER_ID_COUNT; i++) pararAoVivo(i);
 }
 
 // ------------------------------------------------ chamado pela tarefa de rede (nucleo 0)
 void iniciarTelegram() {
-  client.setInsecure();       // como no projeto anterior (prototipo)
+  client.setCACert(TELEGRAM_CERTIFICATE_ROOT);   // confere o certificado do Telegram (vem com a biblioteca)
   carregarIds();
   bot.longPoll = 0;
-  bot.setMyCommands(F("[{\"command\":\"localizacao\",\"description\":\"Onde o pet esta agora\"},"
-                      "{\"command\":\"aovivo\",\"description\":\"Localizacao em tempo real\"},"
-                      "{\"command\":\"parar\",\"description\":\"Parar o ao vivo\"},"
+  bot.setMyCommands(F("[{\"command\":\"localizacao\",\"description\":\"Ultima posicao registrada\"},"
                       "{\"command\":\"status\",\"description\":\"Coleira, bateria e area\"},"
                       "{\"command\":\"saude\",\"description\":\"Batimento em repouso e atividade\"},"
                       "{\"command\":\"perdido\",\"description\":\"Ligar o modo pet perdido\"},"
@@ -385,5 +312,4 @@ void cuidarTelegram() {
       numNewMessages = bot.getUpdates(bot.last_message_received + 1);
     }
   }
-  atualizarAoVivo();
 }

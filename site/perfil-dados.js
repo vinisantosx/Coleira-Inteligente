@@ -1,8 +1,17 @@
-// Dados compartilhados entre o painel (index.html) e a página do QR (perdido.html).
+// Dados compartilhados entre o painel (index.html), a página do QR (perdido.html)
+// e a comunidade.
 //
-// Firestore:
-//   perfis/{PET_ID}   nome, foto, telefone, recado, perdido, perdidoDesde   (escrito pelo painel)
-//   alertas/*         tipo "avistamento" é criado pela página do QR
+// Firestore (regras em firestore.rules):
+//   acesso/{pet}                 dono (uid do tutor) e coleira (uid da coleira)
+//   perfis/{pet}                 PÚBLICO: nome, foto, telefone, recado, perdido, perdidoDesde, encontrado
+//   pets/{pet}                   estado da coleira (só dono e coleira)
+//   pets/{pet}/config/area       área segura
+//   pets/{pet}/saude/{dia}       resumo diário
+//   pets/{pet}/alertas/{id}      alertas
+//   pets/{pet}/encontros/{id}    avisos de quem achou o pet (dono + quem criou)
+//
+// Login: o tutor entra com e-mail e senha; quem escaneia o QR e a coleira usam
+// login anônimo (sem dados pessoais), só para as regras saberem quem é quem.
 //
 // Sem Firebase (modo simulação) os dados ficam no localStorage do navegador,
 // então painel e página do QR conversam entre abas do mesmo navegador.
@@ -11,18 +20,50 @@ import { firebaseConfig, PET_ID, PET_NOME } from './firebase-config.js';
 const FIREBASE_VERSAO = '10.12.2';
 export const configurado = !!firebaseConfig.apiKey && firebaseConfig.apiKey !== 'COLE_AQUI';
 
-export const PERFIL_PADRAO = { nome: PET_NOME, foto: '', telefone: '', recado: '', perdido: false, perdidoDesde: null };
+export const PERFIL_PADRAO = { nome: PET_NOME, foto: '', telefone: '', recado: '', perdido: false, perdidoDesde: null, encontrado: null };
+
+// ?emulador na URL (só em localhost) liga o site aos emuladores do Firebase
+function usarEmulador() {
+  if (!['localhost', '127.0.0.1'].includes(location.hostname)) return false;
+  try {
+    if (new URLSearchParams(location.search).has('emulador')) sessionStorage.setItem('emulador', '1');
+    return sessionStorage.getItem('emulador') === '1';
+  } catch { return false; }
+}
 
 let conexao = null;
 export function abrirFirestore() {
   if (!conexao) {
     conexao = (async () => {
-      const app = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSAO}/firebase-app.js`);
-      const fs = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSAO}/firebase-firestore.js`);
-      return { fs, db: fs.getFirestore(app.initializeApp(firebaseConfig)) };
+      const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSAO}`;
+      const [app, fs, au] = await Promise.all([
+        import(`${base}/firebase-app.js`), import(`${base}/firebase-firestore.js`), import(`${base}/firebase-auth.js`)
+      ]);
+      const inst = app.initializeApp(firebaseConfig);
+      const db = fs.getFirestore(inst), auth = au.getAuth(inst);
+      if (usarEmulador()) {          // só para testes locais (npx firebase emulators:start)
+        fs.connectFirestoreEmulator(db, '127.0.0.1', 8089);
+        au.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+      }
+      return { fs, db, au, auth };
     })();
   }
   return conexao;
+}
+
+// primeiro estado do login (o Firebase restaura a sessão salva no navegador)
+export async function usuarioAtual() {
+  const { au, auth } = await abrirFirestore();
+  await auth.authStateReady();
+  return auth.currentUser;
+}
+
+// quem escaneia o QR: login anônimo, sem pedir nada (as regras usam o uid)
+export async function entrarAnonimo() {
+  const { au, auth } = await abrirFirestore();
+  await auth.authStateReady();
+  if (auth.currentUser) return auth.currentUser;
+  return (await au.signInAnonymously(auth)).user;
 }
 
 // ---------- armazenamento local (simulação) ----------

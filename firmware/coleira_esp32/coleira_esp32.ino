@@ -35,6 +35,7 @@
 #include "time.h"
 #include <Preferences.h>
 #include "config.h"
+#include "certificados.h"
 
 // ------------------------------------------------ estado compartilhado
 struct Estado {
@@ -311,16 +312,100 @@ String urlFirestore(const String &caminho) {
          "/databases/(default)/documents/" + caminho + "?key=" FIREBASE_API_KEY;
 }
 
+// ================================================= login da coleira (Firebase Auth anonimo)
+// A coleira cria uma conta anonima so dela na primeira vez e guarda o refresh token
+// na memoria (NVS). O UID aparece no Monitor Serial: cole no site, em
+// "Area de testes > Vincular a coleira". As regras do Firestore so deixam ESTE UID
+// gravar os dados do pet. Nada de senha do tutor dentro da coleira.
+String idToken, uidColeira;
+unsigned long tokenExpira = 0;
+bool avisouPermissao = false;
+Preferences prefsAuth;
+
+bool horaCerta() {                 // conferir certificado exige a data certa (NTP)
+  for (int i = 0; i < 40 && time(nullptr) < 1700000000; i++) vTaskDelay(pdMS_TO_TICKS(250));
+  return time(nullptr) >= 1700000000;
+}
+
+int postAuth(const String &url, const char *tipo, const String &corpo, String &resp) {
+  WiFiClientSecure cli;
+  cli.setCACert(GOOGLE_RAIZES);    // so aceita o Google de verdade
+  HTTPClient http;
+  http.setTimeout(8000);
+  if (!http.begin(cli, url)) return -1;
+  http.addHeader("Content-Type", tipo);
+  int cod = http.POST(corpo);
+  if (cod > 0) resp = http.getString();
+  http.end();
+  return cod;
+}
+
+bool garantirToken() {
+  if (idToken.length() && (long)(tokenExpira - millis()) > 300000L) return true;   // vale por mais 5 min
+  if (!horaCerta()) { Serial.println("[auth] aguardando a hora (NTP)"); return false; }
+  prefsAuth.begin("auth", false);
+  String refresh = prefsAuth.getString("refresh", "");
+  String resp;
+  JsonDocument d;
+  bool nova = false;
+  if (refresh.length()) {
+    int cod = postAuth("https://securetoken.googleapis.com/v1/token?key=" FIREBASE_API_KEY,
+                       "application/x-www-form-urlencoded", "grant_type=refresh_token&refresh_token=" + refresh, resp);
+    if (cod == 200 && !deserializeJson(d, resp)) {
+      idToken = d["id_token"].as<String>();
+      uidColeira = d["user_id"].as<String>();
+      prefsAuth.putString("refresh", d["refresh_token"].as<String>());
+      tokenExpira = millis() + d["expires_in"].as<String>().toInt() * 1000UL;
+    } else if (cod == 400) {       // conta apagada ou token revogado: cria outra
+      prefsAuth.remove("refresh");
+      refresh = "";
+    } else {
+      Serial.printf("[auth] erro %d ao renovar o token\n", cod);
+    }
+  }
+  if (!refresh.length()) {
+    int cod = postAuth("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" FIREBASE_API_KEY,
+                       "application/json", "{\"returnSecureToken\":true}", resp);
+    if (cod == 200 && !deserializeJson(d, resp)) {
+      idToken = d["idToken"].as<String>();
+      uidColeira = d["localId"].as<String>();
+      prefsAuth.putString("refresh", d["refreshToken"].as<String>());
+      tokenExpira = millis() + d["expiresIn"].as<String>().toInt() * 1000UL;
+      nova = true;
+    } else {
+      Serial.printf("[auth] erro %d ao criar a conta da coleira. Ative o login Anonimo no Firebase.\n", cod);
+    }
+  }
+  prefsAuth.end();
+  if (idToken.length()) {
+    static String mostrado;
+    if (nova || mostrado != uidColeira) {
+      Serial.println("==============================================================");
+      Serial.printf("[auth] UID DA COLEIRA: %s\n", uidColeira.c_str());
+      Serial.println("[auth] Cole no site: Area de testes > Vincular a coleira");
+      Serial.println("==============================================================");
+      mostrado = uidColeira;
+    }
+  }
+  return idToken.length() > 0;
+}
+
 int requisicao(const char *metodo, const String &url, const String &corpo, String *resposta = nullptr) {
   WiFiClientSecure cli;
-  cli.setInsecure();               // prototipo: sem validar certificado
+  cli.setCACert(GOOGLE_RAIZES);    // confere o certificado do Google (nada de setInsecure)
   HTTPClient http;
   http.setTimeout(8000);
   if (!http.begin(cli, url)) return -1;
   http.addHeader("Content-Type", "application/json");
+  if (idToken.length()) http.addHeader("Authorization", "Bearer " + idToken);
   int cod = corpo.length() ? http.sendRequest(metodo, corpo) : http.sendRequest(metodo);
   if (resposta && cod > 0) *resposta = http.getString();
   http.end();
+  if (cod == 403 && !avisouPermissao) {
+    avisouPermissao = true;
+    Serial.printf("[auth] Firestore recusou (403). A coleira ja foi vinculada no site? UID: %s\n", uidColeira.c_str());
+  }
+  if (cod == 401) tokenExpira = 0;   // token vencido: renova na proxima volta
   return cod;
 }
 
@@ -332,7 +417,7 @@ double lerNumero(JsonVariantConst f) {
 
 void buscarArea() {
   String resp;
-  int cod = requisicao("GET", urlFirestore("config/area"), "", &resp);
+  int cod = requisicao("GET", urlFirestore("pets/" PET_ID "/config/area"), "", &resp);
   if (cod != 200) { Serial.printf("[area] GET %d (usando a area atual)\n", cod); return; }
   JsonDocument doc;
   if (deserializeJson(doc, resp)) return;
@@ -428,7 +513,7 @@ void tratarEvento(const Evento &ev) {
   String iso = agoraISO();
   if (iso.length()) f["criadoEm"]["timestampValue"] = iso;
   String corpo; serializeJson(doc, corpo);
-  int cod = requisicao("POST", urlFirestore("alertas"), corpo);
+  int cod = requisicao("POST", urlFirestore("pets/" PET_ID "/alertas"), corpo);
   Serial.printf("[alerta] %s -> %d\n", codigoEvento(ev.tipo), cod);
 
 #if TELEGRAM_ATIVO
@@ -489,7 +574,7 @@ void aprenderDia(const Dia &d) {
   Serial.printf("[saude] dia %s: repouso %.0f bpm -> normal agora %.0f bpm (%d dias)\n", d.data, m, b.media, b.dias);
 }
 
-String urlDia(const char *data) { return urlFirestore(String("saude/") + PET_ID + "_" + data); }
+String urlDia(const char *data) { return urlFirestore(String("pets/" PET_ID "/saude/") + data); }
 
 void publicarDia(const Dia &d) {
   if (!d.data[0]) return;
@@ -558,6 +643,7 @@ void tarefaRede(void *) {
   bool primeira = true;
   for (;;) {
     if (!conectarWiFi()) { vTaskDelay(pdMS_TO_TICKS(5000)); continue; }
+    if (!garantirToken()) { vTaskDelay(pdMS_TO_TICKS(10000)); continue; }
 
 #if TELEGRAM_ATIVO
     static bool telegramPronto = false;
@@ -573,14 +659,16 @@ void tarefaRede(void *) {
 
 #if TELEGRAM_ATIVO
     if (perdidoMudouPeloSite >= 0) { avisarPerdidoPeloSite(perdidoMudouPeloSite == 1); perdidoMudouPeloSite = -1; }
-    cuidarTelegram();     // le comandos e atualiza o "ao vivo" (tempo real)
+    cuidarTelegram();     // le os comandos do bot
 #endif
 
     xSemaphoreTake(trava, portMAX_DELAY);
     Estado copia = estado;
     xSemaphoreGive(trava);
-    unsigned long intervalo = (copia.dentroArea && !copia.perdido) ? INTERVALO_ENVIO_MS : INTERVALO_ALERTA_MS;
-    if (primeira || ultEnvio == 0 || millis() - ultEnvio > intervalo) {
+    // Sem chip de dados: a coleira so sincroniza pelo Wi-Fi, no mesmo ritmo dentro ou fora.
+    // Se o pet sair da area, o evento SAIU_AREA (com o ponto da saida) fica na fila
+    // e e enviado assim que houver Wi-Fi; o LED pisca sozinho enquanto ele estiver fora.
+    if (primeira || ultEnvio == 0 || millis() - ultEnvio > INTERVALO_ENVIO_MS) {
       publicarEstado(copia);
       ultEnvio = millis();
     }

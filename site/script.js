@@ -3,6 +3,11 @@ import {
   configurado, abrirFirestore, PERFIL_PADRAO, perfilLocal, salvarPerfilLocal, avistamentosLocais,
   adicionarAvistamentoLocal, CHAVE_PERFIL, CHAVE_AVISTAMENTOS, telefoneWhatsApp, telefoneBonito, urlPaginaQR, reduzirFoto
 } from './perfil-dados.js';
+import {
+  iniciarEncontros, ouvirEncontros, criarEncontro, atualizarEncontro, responder, linkRota, ESTADO_PET, ONDE_FICA, STATUS
+} from './encontros.js';
+import { montarComunidade } from './comunidade-ui.js';
+import { exigirLogin, sair, emailAtual } from './conta.js';
 import { analisar, graficoRepouso, graficoAtividade, historicoExemplo, dataLocal, diasAtras } from './saude.js';
 
 const $ = (id) => document.getElementById(id);
@@ -22,6 +27,10 @@ let perfil = configurado ? { ...PERFIL_PADRAO } : perfilLocal();   // nome, foto
 let formSujo = false, fotoNova;                                    // edição do perfil ainda não salva
 let idsAvistados = null;                                           // avistamentos já vistos (para avisar só os novos)
 const nomePet = () => perfil.nome || PET_NOME;
+let reconhecido = { fora: false, coleira: false };              // alertas que o tutor já viu ("Entendi" / "Pet encontrado")
+let saida = null;                                                 // ponto e hora em que o pet saiu da área segura
+let encontros = [];
+let comunidade = null;                                            // rede do bairro (montada depois do login)                                               // avisos de quem achou o pet pelo QR
 let diasSaude = {};                                                // resumos diários: { 'AAAA-MM-DD': {...} }
 let analiseSaude = null;
 const CHAVE_SAUDE = 'coleira-saude-' + PET_ID;
@@ -115,8 +124,20 @@ function renderEstado(e, novo = true) {
   ultimoEstado = e;
   const a = areaAtual();
   const temPosicao = e.gpsFix !== false && e.lat && e.lng;
-  const dist = temPosicao ? Math.round(map.distance([a.lat, a.lng], [e.lat, e.lng])) : null;
+  let dist = temPosicao ? Math.round(map.distance([a.lat, a.lng], [e.lat, e.lng])) : null;
   const fora = dist != null && dist > a.raio;
+
+  // Sem conectividade móvel: fora da área não há posição ao vivo.
+  // Guardamos só o ponto em que ele saiu e mostramos esse "último ponto registrado".
+  if (fora) {
+    if (!saida) saida = { lat: e.lat, lng: e.lng, dist, em: e.atualizadoEm || new Date() };
+    dist = saida.dist;
+  } else {
+    saida = null;
+    reconhecido.fora = false;
+  }
+  if (e.coleiraNoPet) reconhecido.coleira = false;
+  const ponto = saida || (temPosicao ? { lat: e.lat, lng: e.lng } : null);
 
   // distância + régua (meio da régua = limite da área)
   $('distancia').textContent = dist != null ? `${dist} m` : 'sem GPS';
@@ -151,15 +172,17 @@ function renderEstado(e, novo = true) {
   [...$('barrasGps').children].forEach((b, i) => b.classList.toggle('on', i < nivel));
   $('gps').textContent = e.gpsFix === false ? 'Procurando satélites' : `${sats || '?'} satélites`;
   $('gps').className = 'sinal-valor pequeno ' + (e.gpsFix === false ? 'atencao' : '');
-  $('latitude').textContent = temPosicao ? e.lat.toFixed(6) : '-';
-  $('longitude').textContent = temPosicao ? e.lng.toFixed(6) : '-';
+  $('latitude').textContent = ponto ? ponto.lat.toFixed(6) : '-';
+  $('longitude').textContent = ponto ? ponto.lng.toFixed(6) : '-';
   $('atualizado').textContent = haQuanto(e.atualizadoEm);
 
-  // mapa
-  if (temPosicao) {
-    marcadorPet.setLatLng([e.lat, e.lng]).setIcon(iconePet(fora));
-    marcadorPet.bindPopup(`<b>${nomePet()}</b> ${fora ? 'está FORA da área' : 'está dentro da área'}`);
-    if (novo) adicionarPegada(e.lat, e.lng);
+  // mapa: dentro da área, a posição sincronizada; fora, o último ponto registrado
+  if (ponto) {
+    marcadorPet.setLatLng([ponto.lat, ponto.lng]).setIcon(iconePet(fora));
+    marcadorPet.bindPopup(fora
+      ? `<b>${nomePet()}</b> saiu da área segura às ${fmtHora(saida.em)}.<br>Último ponto registrado pela coleira.`
+      : `<b>${nomePet()}</b> está dentro da área segura`);
+    if (novo && !fora) adicionarPegada(e.lat, e.lng);
   }
 
   atualizarStatus(e, fora, dist);
@@ -194,15 +217,25 @@ function adicionarPegada(lat, lng) {
 
 const semSinal = (e) => e?.atualizadoEm && (Date.now() - e.atualizadoEm.getTime()) / 1000 > SEM_SINAL_SEGUNDOS;
 
+// encontro ainda não encerrado = alguém confirmou pelo QR que está com o pet / viu o pet
+const encontroAtivo = () => encontros.find((x) => x.status !== 'resolvido') || null;
+const quemAchou = (enc) => enc?.achador?.nome?.trim() || 'Uma pessoa';
+
 function atualizarStatus(e, fora, dist) {
   e = e || { coleiraNoPet: true };
+  const enc = encontroAtivo();
   let estado, etiqueta, texto;
-  if (semSinal(e)) {
-    estado = 'sem-sinal'; etiqueta = 'Sem sinal';
-    texto = `A coleira não envia dados desde ${fmtHora(e.atualizadoEm)}.`;
+  if (enc) {
+    estado = 'encontrado'; etiqueta = 'Pet encontrado';
+    texto = `${nomePet()} foi encontrado por ${quemAchou(enc)} às ${fmtHora(enc.criadoEm)}`
+      + (enc.estadoPet ? ` (${(ESTADO_PET[enc.estadoPet] || '').toLowerCase()})` : '')
+      + `. ${enc.status === 'a_caminho' ? 'Você avisou que está a caminho.' : 'Veja o ponto exato e combine a busca.'}`;
   } else if (fora) {
     estado = 'fora'; etiqueta = 'Fora da área';
-    texto = `${nomePet()} saiu da área segura! Veja no mapa onde ele está.`;
+    texto = `${nomePet()} saiu da área segura às ${fmtHora(saida?.em)}, a ${dist} m de casa. Fora da área a coleira não envia a posição: o LED pisca e quem encontrar pode avisar você pelo QR.`;
+  } else if (semSinal(e)) {
+    estado = 'sem-sinal'; etiqueta = 'Fora do Wi-Fi';
+    texto = `A coleira não sincroniza desde ${fmtHora(e.atualizadoEm)}. Ela continua medindo os sinais e conferindo a área segura, e envia tudo quando voltar ao Wi-Fi.`;
   } else if (dist == null) {
     estado = 'aguardando'; etiqueta = 'Procurando GPS';
     texto = 'A coleira está ligada e aguardando sinal de GPS.';
@@ -210,17 +243,52 @@ function atualizarStatus(e, fora, dist) {
     estado = 'dentro'; etiqueta = 'Em casa';
     texto = `${nomePet()} está dentro da área segura. Tudo tranquilo por aqui.`;
   }
-  if (perfil.perdido) {
+  if (perfil.perdido && !enc) {
     etiqueta = 'Modo perdido';
-    texto = `Procurando ${nomePet()}. A coleira pisca o LED e envia a posição a cada 3 segundos.`
-      + (dist != null ? ` Última posição a ${dist} m de casa.` : '');
+    texto = `Procurando ${nomePet()}. A página do QR está pedindo ajuda a quem encontrá-lo.`
+      + (saida ? ` Ele saiu da área às ${fmtHora(saida.em)}.` : '');
   }
   document.body.dataset.estado = estado;
   $('etiquetaEstado').textContent = etiqueta;
   $('estadoMenu').textContent = etiqueta;
   $('status').textContent = texto;
 
-  const temPos = e.lat && e.lng;
+  const ponto = saida || (e.lat && e.lng ? { lat: e.lat, lng: e.lng } : null);
+  const pedidoAjuda = (inicio) => linkZap(inicio + (ponto ? ` Último ponto registrado: ${linkMapa(ponto.lat, ponto.lng)} ` : ' ')
+    + `Se encontrar, escaneie o QR da coleira ou abra: ${urlPaginaQR()}`);
+
+  $('bannerMapa').hidden = !ponto;
+  $('bannerMapa').lastChild.textContent = 'Abrir no Google Maps';
+  if (ponto) $('bannerMapa').href = linkMapa(ponto.lat, ponto.lng);
+  $('bannerZapTexto').textContent = 'Pedir ajuda no WhatsApp';
+
+  $('banner').classList.remove('encontrado');
+  if (enc) {
+    const tel = telefoneWhatsApp(enc.achador?.telefone);
+    $('banner').hidden = false;
+    $('banner').classList.remove('coleira', 'perdido');
+    $('banner').classList.add('encontrado');
+    usar($('bannerIcone'), 'i-check');
+    $('bannerTitulo').textContent = `${nomePet()} foi encontrado!`;
+    $('bannerTexto').textContent = [
+      `${quemAchou(enc)}${enc.achador?.telefone ? ' · ' + telefoneBonito(enc.achador.telefone) : ''} confirmou pelo QR às ${fmtHora(enc.criadoEm)}.`,
+      [ESTADO_PET[enc.estadoPet], ONDE_FICA[enc.ondeFica]].filter(Boolean).join(' · ')
+    ].filter(Boolean).join(' ');
+    $('bannerMapa').hidden = !(enc.lat && enc.lng);
+    if (enc.lat && enc.lng) $('bannerMapa').href = linkRota(enc.lat, enc.lng);
+    $('bannerMapa').lastChild.textContent = 'Traçar rota até lá';
+    $('bannerZap').hidden = tel.length < 12;
+    $('bannerZap').href = `https://wa.me/${tel}?text=${encodeURIComponent(`Olá! Sou o tutor de ${nomePet()}. Obrigado por avisar!`)}`;
+    $('bannerZapTexto').textContent = `Falar com ${quemAchou(enc).split(' ')[0]}`;
+    $('btnEncontradoBanner').hidden = false;
+    $('btnEncontradoBanner').lastChild.textContent = 'Já estou com ele';
+    $('btnPerdidoBanner').hidden = true;
+    $('btnEntendi').hidden = true;
+    return;
+  }
+  $('bannerZap').hidden = false;
+  $('btnEncontradoBanner').lastChild.textContent = 'Pet encontrado';
+
   if (perfil.perdido) {
     const desde = perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora';
     $('banner').hidden = false;
@@ -228,32 +296,30 @@ function atualizarStatus(e, fora, dist) {
     $('banner').classList.add('perdido');
     usar($('bannerIcone'), 'i-megafone');
     $('bannerTitulo').textContent = 'Modo pet perdido ativo';
-    $('bannerTexto').textContent = `Desde ${desde}. Peça ajuda a vizinhos e grupos do bairro.`;
-    $('bannerMapa').hidden = !temPos;
-    if (temPos) $('bannerMapa').href = linkMapa(e.lat, e.lng);
-    $('bannerZapTexto').textContent = 'Pedir ajuda no WhatsApp';
-    $('bannerZap').href = linkZap(`${nomePet()} está perdido! ` + (temPos ? `Última localização: ${linkMapa(e.lat, e.lng)} ` : '')
-      + `Se encontrar, escaneie o QR da coleira ou abra: ${urlPaginaQR()}`);
+    $('bannerTexto').textContent = `Desde ${desde}. A página do QR pede ajuda e você é avisado quando alguém encontrar ${nomePet()}.`;
+    $('bannerZap').href = pedidoAjuda(`${nomePet()} está perdido!`);
     $('btnEncontradoBanner').hidden = false;
+    $('btnPerdidoBanner').hidden = true;
+    $('btnEntendi').hidden = true;
     return;
   }
   $('banner').classList.remove('perdido');
   $('btnEncontradoBanner').hidden = true;
-  $('bannerMapa').hidden = false;
-  $('bannerZapTexto').textContent = 'Enviar no WhatsApp';
 
-  const problema = fora ? 'fora' : !e.coleiraNoPet ? 'coleira' : null;
+  const problema = fora && !reconhecido.fora ? 'fora' : !e.coleiraNoPet && !reconhecido.coleira ? 'coleira' : null;
   $('banner').hidden = !problema;
   if (problema) {
     const msg = problema === 'fora'
-      ? `${nomePet()} saiu da área segura e está a ${dist} m de casa.`
+      ? `Saiu às ${fmtHora(saida?.em)}, a ${dist} m de casa. A coleira está piscando o LED; quem encontrar pode avisar você pelo QR.`
       : `A coleira de ${nomePet()} foi removida.`;
     $('banner').classList.toggle('coleira', problema === 'coleira');
     usar($('bannerIcone'), problema === 'fora' ? 'i-corre' : 'i-tag');
-    $('bannerTitulo').textContent = problema === 'fora' ? 'Pet fora de casa!' : 'Coleira removida!';
+    $('bannerTitulo').textContent = problema === 'fora' ? `${nomePet()} saiu da área segura` : 'Coleira removida!';
     $('bannerTexto').textContent = msg;
-    $('bannerMapa').href = linkMapa(e.lat, e.lng);
-    $('bannerZap').href = linkZap(`${msg} Última localização: ${linkMapa(e.lat, e.lng)}`);
+    $('bannerZap').href = pedidoAjuda(problema === 'fora' ? `${nomePet()} fugiu de casa!` : `A coleira de ${nomePet()} foi removida.`);
+    $('btnPerdidoBanner').hidden = problema !== 'fora';
+    $('btnEntendi').hidden = false;
+    $('banner').dataset.problema = problema;
   }
 }
 
@@ -328,7 +394,6 @@ function renderAlertas(lista) {
   }));
   ultimaLista = lista;
   atualizarSelo();
-  desenharAchados(lista);
   verificarAvistamentos(lista);
 }
 
@@ -522,7 +587,7 @@ document.addEventListener('keydown', (ev) => {
 });
 
 async function gravarArea(a) {
-  if (db) await fs.setDoc(fs.doc(db, 'config', 'area'), { ...a, atualizadoEm: fs.serverTimestamp() });
+  if (db) await fs.setDoc(fs.doc(db, 'pets', PET_ID, 'config', 'area'), { ...a, atualizadoEm: fs.serverTimestamp() });
   else salvarAreaLocal(a);
 }
 
@@ -615,8 +680,15 @@ async function passoSimulador(forcar = false) {
     await registrarAlerta(dentro ? 'voltou_area' : 'saiu_area', `${nomePet()} ${dentro ? 'voltou para a área segura' : 'saiu da área segura'}`);
   }
 
+  // fora da área a coleira está longe do Wi-Fi de casa: só o registro da saída chega
+  if (!dentro) {
+    if (sim.saidaEnviada) return;
+    sim.saidaEnviada = true;
+    forcar = true;
+  } else sim.saidaEnviada = false;
+
   if (db) {
-    const intervalo = dentro && !perfil.perdido ? 10000 : 3000;
+    const intervalo = 10000;
     if (forcar || Date.now() - ultimoEnvioSim > intervalo) {
       ultimoEnvioSim = Date.now();
       await fs.setDoc(fs.doc(db, 'pets', PET_ID), { ...estado, atualizadoEm: fs.serverTimestamp() });
@@ -630,14 +702,14 @@ let ultimoSalvoSaude = 0;
 async function salvarDiaSim(hoje, forcar = false) {
   if (!forcar && Date.now() - ultimoSalvoSaude < (db ? 10000 : 3000)) return;
   ultimoSalvoSaude = Date.now();
-  if (db) await fs.setDoc(fs.doc(db, 'saude', `${PET_ID}_${hoje.data}`), { pet: PET_ID, ...hoje, atualizadoEm: fs.serverTimestamp() });
+  if (db) await fs.setDoc(fs.doc(db, 'pets', PET_ID, 'saude', hoje.data), { pet: PET_ID, ...hoje, atualizadoEm: fs.serverTimestamp() });
   else { try { localStorage.setItem(CHAVE_SAUDE, JSON.stringify(diasSaude)); } catch { /* ok */ } renderSaude(); }
 }
 
 async function registrarAlerta(tipo, mensagem, pos = sim) {
   const a = { pet: PET_ID, tipo, mensagem, lat: pos?.lat ?? null, lng: pos?.lng ?? null };
   if (db) {
-    await fs.addDoc(fs.collection(db, 'alertas'), { ...a, criadoEm: fs.serverTimestamp() });
+    await fs.addDoc(fs.collection(db, 'pets', PET_ID, 'alertas'), { ...a, criadoEm: fs.serverTimestamp() });
   } else {
     alertasLocais.unshift({ ...a, data: new Date() });
     alertasLocais = alertasLocais.slice(0, 30);
@@ -646,12 +718,18 @@ async function registrarAlerta(tipo, mensagem, pos = sim) {
 }
 
 async function simularAvistamento() {
-  const a = {
-    pet: PET_ID, tipo: 'avistamento', mensagem: `Alguém encontrou ${nomePet()}: "Está aqui comigo na padaria da esquina."`,
+  const dados = {
     lat: +(sim.lat + 0.00012).toFixed(6), lng: +(sim.lng + 0.00009).toFixed(6), precisao: 12,
-    contatoNome: 'Ana (simulação)', contatoTelefone: '71988887777'
+    achador: { nome: 'Ana (simulação)', telefone: '71988887777' },
+    mensagem: 'Está aqui comigo na padaria da esquina.', estadoPet: 'assustado', ondeFica: 'comigo', foto: ''
   };
-  if (db) await fs.addDoc(fs.collection(db, 'alertas'), { ...a, criadoEm: fs.serverTimestamp() });
+  const id = await criarEncontro(dados);
+  const a = {
+    pet: PET_ID, tipo: 'avistamento', encontroId: id, mensagem: `Alguém encontrou ${nomePet()}: "${dados.mensagem}"`,
+    lat: dados.lat, lng: dados.lng, precisao: dados.precisao,
+    contatoNome: dados.achador.nome, contatoTelefone: dados.achador.telefone
+  };
+  if (db) await fs.addDoc(fs.collection(db, 'pets', PET_ID, 'alertas'), { ...a, criadoEm: fs.serverTimestamp() });
   else { adicionarAvistamentoLocal({ ...a, data: new Date().toISOString() }); renderAlertasLocais(); }
 }
 
@@ -686,28 +764,45 @@ document.querySelectorAll('[data-sim]').forEach((b) => b.addEventListener('click
     mostrarAviso('Simulando batimento acima do normal em repouso por ~25 s', 'Ver saúde', () => irPara('saude', true), 6000);
   }
   if (acao === 'historico') await gerarHistoricoExemplo();
+  if (acao === 'vizinhos') {
+    if (!comunidade?.membro()) { mostrarAviso('Primeiro entre na rede do bairro.', 'Abrir', () => irPara('comunidade', true), 6000); return; }
+    if (!comunidade.alertaAtivo()) { mostrarAviso(`Ative o modo perdido e publique o alerta de ${nomePet()} no bairro.`, 'Abrir', () => irPara('comunidade', true), 6000); return; }
+    if (comunidade.simularVizinhos()) mostrarAviso('Dois vizinhos começaram a procurar e um avistou o pet.', 'Ver', () => irPara('comunidade', true), 7000);
+    else mostrarAviso('Com o Firebase configurado, use uma segunda conta para testar os vizinhos.', null, null, 6000);
+    return;
+  }
   marcarPasseio(!!sim.rota);
   passoSimulador(true).catch(console.error);
 }));
 
 // ============================================================ perfil, QR e modo perdido
 function aplicarPerfil() {
+  const enc = encontroAtivo();
   $('nomePet').textContent = nomePet();
   document.title = `${nomePet()} | Coleira inteligente`;
-  document.body.dataset.perdido = String(!!perfil.perdido);
+  document.body.dataset.perdido = String(!!perfil.perdido && !enc);
+  document.body.dataset.encontrado = String(!!enc);
   $('nomePetMenu').textContent = nomePet();
-  $('pontoPerdido').hidden = !perfil.perdido;
+  $('pontoPerdido').hidden = !perfil.perdido && !enc;
   ['btnPerdido', 'btnPerdido2'].forEach((id) => {
-    $(id).querySelector('span').textContent = perfil.perdido ? 'Pet encontrado' : 'Meu pet sumiu';
-    usar($(id).querySelector('use'), perfil.perdido ? 'i-check' : 'i-megafone');
+    $(id).querySelector('span').textContent = enc ? 'Já estou com ele' : perfil.perdido ? 'Pet encontrado' : 'Meu pet sumiu';
+    usar($(id).querySelector('use'), enc || perfil.perdido ? 'i-check' : 'i-megafone');
   });
-  $('mpTitulo').textContent = perfil.perdido ? 'Modo pet perdido ATIVO' : 'Modo pet perdido desligado';
-  $('mpTexto').textContent = perfil.perdido
-    ? `Desde ${perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora'}. A coleira pisca o LED sem parar e a página do QR pede ajuda a quem encontrar ${nomePet()}.`
-    : 'Se o pet sumir, ative para a coleira piscar o LED sem parar e a página do QR pedir ajuda a quem encontrá-lo.';
+  if (enc) {
+    $('mpTitulo').textContent = `${nomePet()} foi encontrado!`;
+    $('mpTexto').textContent = `${quemAchou(enc)}${enc.achador?.telefone ? ' (' + telefoneBonito(enc.achador.telefone) + ')' : ''} confirmou pelo QR às ${fmtHora(enc.criadoEm)}`
+      + `${enc.lat ? ' e enviou a localização exata' : ''}. Veja o cartão do encontro abaixo e toque em "Já estou com ele" quando buscar ${nomePet()}.`;
+  } else {
+    $('mpTitulo').textContent = perfil.perdido ? 'Modo pet perdido ATIVO' : 'Modo pet perdido desligado';
+    $('mpTexto').textContent = perfil.perdido
+      ? `Desde ${perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora'}. A coleira pisca o LED sem parar e a página do QR pede ajuda a quem encontrar ${nomePet()}.`
+      : 'Se o pet sumir, ative para a coleira piscar o LED sem parar e a página do QR pedir ajuda a quem encontrá-lo.';
+  }
   if (!formSujo) preencherPerfil();
+  document.querySelectorAll('[data-nome-pet]').forEach((el) => { el.textContent = nomePet(); });
   if (ultimoEstado) renderEstado(ultimoEstado, false);
   else atualizarStatus(null, false, null);
+  comunidade?.atualizarPet();
 }
 
 function preencherPerfil() {
@@ -805,18 +900,22 @@ function desenharQR() {
   $('qrBaixar').download = `qr-coleira-${PET_ID}.png`;
 }
 
-async function definirPerdido(valor) {
-  const campos = { perdido: valor, perdidoDesde: valor ? new Date() : null };
+// enc: o encontro que levou o pet de volta (para registrar quem encontrou)
+async function definirPerdido(valor, enc = null) {
+  const campos = { perdido: valor, perdidoDesde: valor ? new Date() : null, encontrado: null };
   if (db) {
-    await fs.setDoc(fs.doc(db, 'perfis', PET_ID), { perdido: valor, perdidoDesde: valor ? fs.serverTimestamp() : null }, { merge: true });
+    await fs.setDoc(fs.doc(db, 'perfis', PET_ID), { perdido: valor, perdidoDesde: valor ? fs.serverTimestamp() : null, encontrado: null }, { merge: true });
     perfil = { ...perfil, ...campos };
   } else {
     await gravarPerfil(campos);
   }
   aplicarPerfil();
-  const pos = ultimoEstado?.lat ? ultimoEstado : null;
+  const pos = enc?.lat ? enc : ultimoEstado?.lat ? ultimoEstado : null;
   await registrarAlerta(valor ? 'modo_perdido' : 'pet_encontrado',
-    valor ? `Modo pet perdido ativado para ${nomePet()}` : `${nomePet()} foi encontrado. Modo perdido desativado`, pos);
+    valor ? `Modo pet perdido ativado para ${nomePet()}`
+      : enc ? `${nomePet()} foi encontrado por ${quemAchou(enc)} e já está com você. Modo perdido desativado`
+        : `${nomePet()} foi encontrado. Modo perdido desativado`, pos);
+  sincronizarAlertaBairro?.(valor);
 }
 
 async function ativarPerdido() {
@@ -827,16 +926,27 @@ async function ativarPerdido() {
   } catch (err) { falhaPerdido(err); }
 }
 
+// O tutor está com o pet: encerra os encontros abertos, desliga o modo perdido e some com os avisos.
 async function marcarEncontrado() {
   try {
-    await definirPerdido(false);
-    mostrarAviso(`Que bom que ${nomePet()} voltou!`, 'Desfazer', () => definirPerdido(true).catch(falhaPerdido));
+    reconhecido = { fora: true, coleira: true };   // o tutor está com o pet: não insistir no aviso
+    if (timerSim) { sim.rota = null; sim.lat = area.lat + 0.00005; sim.lng = area.lng - 0.00015; sim.coleiraNoPet = true; marcarPasseio(false); }
+    const abertos = encontros.filter((x) => x.status !== 'resolvido');
+    const estavaPerdido = !!perfil.perdido;
+    for (const enc of abertos) {
+      await atualizarEncontro(enc.id, { status: 'resolvido' });
+      await responder(enc.id, 'tutor', `Já estou com ${nomePet()}. Muito obrigado pela ajuda!`);
+    }
+    if (estavaPerdido || perfil.encontrado) await definirPerdido(false, abertos[0]);
+    else { aplicarPerfil(); }
+    mostrarAviso(`Que bom que ${nomePet()} voltou!`, estavaPerdido && !abertos.length ? 'Desfazer' : null,
+      estavaPerdido && !abertos.length ? () => definirPerdido(true).catch(falhaPerdido) : null);
   } catch (err) { falhaPerdido(err); }
 }
 function falhaPerdido(err) { console.error(err); mostrarAviso('Não foi possível mudar o modo perdido: ' + err.message, null, null, 6000); }
 
 function alternarPerdido() {
-  if (perfil.perdido) return marcarEncontrado();
+  if (perfil.perdido || encontroAtivo()) return marcarEncontrado();
   const d = $('dlgPerdido');
   if (typeof d.showModal === 'function') d.showModal(); else ativarPerdido();
 }
@@ -880,7 +990,7 @@ function carregarSaudeLocal() {
 async function gerarHistoricoExemplo() {
   const lista = historicoExemplo();
   if (db) {
-    await Promise.all(lista.map((d) => fs.setDoc(fs.doc(db, 'saude', `${PET_ID}_${d.data}`), { pet: PET_ID, ...d, exemplo: true })));
+    await Promise.all(lista.map((d) => fs.setDoc(fs.doc(db, 'pets', PET_ID, 'saude', d.data), { pet: PET_ID, ...d, exemplo: true })));
   } else {
     lista.forEach((d) => { diasSaude[d.data] = d; });
     try { localStorage.setItem(CHAVE_SAUDE, JSON.stringify(diasSaude)); } catch { /* ok */ }
@@ -906,7 +1016,7 @@ function renderSaude() {
   $('sChip').className = 'chip ' + an.statusBpm;
   $('sChip').textContent = CHIP[an.statusBpm];
   $('sRepouso').textContent = an.referencia != null ? Math.round(an.referencia) : '--';
-  $('sRepousoRotulo').textContent = an.agora ? 'bpm em repouso agora' : an.repousoHoje ? 'bpm em repouso hoje' : 'bpm';
+  $('sRepousoRotulo').textContent = an.agora ? 'bpm em repouso (última sincronização)' : an.repousoHoje ? 'bpm em repouso hoje' : 'bpm';
   const media = an.media || 90, lim = an.limite || 18;
   const lo = media - lim * 2, hi = media + lim * 2, pos = (v) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
   $('sFaixaNormal').style.left = (an.faixa ? pos(an.faixa[0]) : 25) + '%';
@@ -957,8 +1067,234 @@ const roSaude = new ResizeObserver(() => desenharGraficosSaude());
 roSaude.observe($('gRepouso'));
 roSaude.observe($('gAtividade'));
 
+// ============================================================ banner: "Entendi" e atalho para o modo perdido
+$('btnEntendi').addEventListener('click', () => {
+  const p = $('banner').dataset.problema;
+  if (p) reconhecido[p] = true;
+  if (ultimoEstado) renderEstado(ultimoEstado, false); else $('banner').hidden = true;
+});
+$('btnPerdidoBanner').addEventListener('click', () => alternarPerdido());
+
+// ============================================================ encontros pelo QR
+const fmtTempo = (d) => (d ? `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} às ${fmtHora(d)}` : '-');
+function el(tag, cls, texto) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (texto != null) e.textContent = texto;
+  return e;
+}
+function botaoLink(texto, href, icone, cls = 'pilula leve') {
+  const a = el('a', cls); a.href = href; a.target = '_blank'; a.rel = 'noopener';
+  if (icone) a.append(iconeSvg(icone));
+  a.append(document.createTextNode(texto));
+  return a;
+}
+
+function cartaoEncontro(enc, compacto) {
+  const c = el('article', 'encontro ' + enc.status);
+  c.dataset.id = enc.id;
+
+  const topo = el('div', 'encontro-topo');
+  const tit = el('div');
+  tit.append(el('strong', null, enc.status === 'resolvido' ? `${nomePet()} foi recuperado` : `Alguém encontrou ${nomePet()}!`),
+    el('small', null, `Aviso enviado pelo QR em ${fmtTempo(enc.criadoEm)}`));
+  topo.append(tit, el('span', 'encontro-status ' + enc.status, STATUS[enc.status] || STATUS.aberto));
+  c.append(topo);
+
+  const corpo = el('div', 'encontro-corpo');
+  if (enc.foto) { const img = el('img', 'encontro-foto'); img.src = enc.foto; img.alt = `Foto enviada por quem encontrou ${nomePet()}`; corpo.append(img); }
+  const info = el('div', 'encontro-info');
+  const chips = el('div', 'encontro-chips');
+  if (enc.estadoPet) chips.append(el('span', 'chip ' + (enc.estadoPet === 'machucado' ? 'alto' : ''), ESTADO_PET[enc.estadoPet] || enc.estadoPet));
+  if (enc.ondeFica) chips.append(el('span', 'chip', ONDE_FICA[enc.ondeFica] || enc.ondeFica));
+  info.append(chips);
+
+  // localização exata do celular de quem encontrou
+  const local = el('p', 'encontro-local');
+  if (enc.lat && enc.lng) {
+    local.append(iconeSvg('i-mapa'), document.createTextNode(
+      `Localização exata enviada ${enc.mapaEm ? 'às ' + fmtHora(enc.mapaEm) : ''}${enc.precisao ? ` · precisão de ~${enc.precisao} m` : ''}`));
+  } else {
+    local.append(document.createTextNode('Quem encontrou não compartilhou a localização.'));
+  }
+  info.append(local);
+
+  const quem = el('p', 'encontro-quem');
+  const nome = enc.achador?.nome || 'Pessoa que encontrou';
+  quem.append(el('b', null, nome));
+  if (enc.achador?.telefone) quem.append(document.createTextNode(' · ' + telefoneBonito(enc.achador.telefone)));
+  info.append(quem);
+  corpo.append(info);
+  c.append(corpo);
+
+  const acoes = el('div', 'encontro-acoes');
+  if (enc.lat && enc.lng) {
+    const ver = el('button', 'pilula'); ver.type = 'button';
+    ver.append(iconeSvg('i-mapa'), document.createTextNode('Ver no mapa'));
+    ver.addEventListener('click', () => { irPara('mapa', true); setTimeout(() => map.flyTo([enc.lat, enc.lng], 18), 150); });
+    acoes.append(ver, botaoLink('Traçar rota até lá', linkRota(enc.lat, enc.lng), 'i-corre', 'pilula primario'));
+  }
+  const tel = telefoneWhatsApp(enc.achador?.telefone);
+  if (tel.length >= 12) {
+    acoes.append(botaoLink('WhatsApp', `https://wa.me/${tel}?text=${encodeURIComponent(`Olá! Sou o tutor de ${nomePet()}. Obrigado por avisar!`)}`, 'i-zap'));
+    acoes.append(botaoLink('Ligar', `tel:+${tel}`, null));
+  }
+  c.append(acoes);
+
+  if (compacto && enc.status === 'resolvido') return c;
+
+  // conversa com quem encontrou (aparece na página do QR, no celular da pessoa)
+  const conversa = el('ul', 'encontro-conversa');
+  const msgs = [...(enc.mensagem ? [{ de: 'achador', texto: enc.mensagem, em: enc.criadoEm }] : []), ...enc.respostas];
+  msgs.forEach((m) => {
+    const li = el('li', m.de === 'tutor' ? 'tutor' : 'achador');
+    li.append(el('strong', null, m.de === 'tutor' ? 'Você' : nome), el('span', null, m.texto), el('time', null, m.em ? fmtHora(m.em) : ''));
+    conversa.append(li);
+  });
+  if (msgs.length) c.append(conversa);
+
+  if (enc.status !== 'resolvido') {
+    const rapidas = el('div', 'encontro-rapidas');
+    [['Estou a caminho!', 'a_caminho'], ['Pode ficar com ele mais um pouco?', null], ['Muito obrigado!', null]].forEach(([t, st]) => {
+      const b = el('button', 'pilula leve', t); b.type = 'button';
+      b.addEventListener('click', () => enviarResposta(enc.id, t, st));
+      rapidas.append(b);
+    });
+    c.append(rapidas);
+
+    const form = el('form', 'encontro-responder');
+    const inp = el('input'); inp.maxLength = 400; inp.placeholder = 'Responder a quem encontrou...';
+    inp.setAttribute('aria-label', 'Resposta para quem encontrou o pet'); inp.dataset.resposta = enc.id;
+    const env = el('button'); env.type = 'submit'; env.setAttribute('aria-label', 'Enviar resposta'); env.append(iconeSvg('i-enviar'));
+    form.append(inp, env);
+    form.addEventListener('submit', (ev) => { ev.preventDefault(); if (inp.value.trim()) enviarResposta(enc.id, inp.value.trim()); });
+    c.append(form);
+
+    const ok = el('button', 'pilula ok-btn'); ok.type = 'button';
+    ok.append(iconeSvg('i-check'), document.createTextNode(`${nomePet()} está comigo: encerrar`));
+    ok.addEventListener('click', () => petRecuperado(enc.id));
+    c.append(ok);
+  }
+  return c;
+}
+
+async function enviarResposta(id, texto, novoStatus) {
+  try {
+    await responder(id, 'tutor', texto);
+    if (novoStatus) await atualizarEncontro(id, { status: novoStatus });
+  } catch (err) { mostrarAviso('Não foi possível responder: ' + err.message, null, null, 5000); }
+}
+
+function petRecuperado() { return marcarEncontrado(); }
+
+function renderEncontros() {
+  // guarda o que o tutor estava digitando para não perder ao atualizar
+  const rascunhos = {};
+  document.querySelectorAll('input[data-resposta]').forEach((i) => { if (i.value) rascunhos[i.dataset.resposta] = i.value; });
+  const foco = document.activeElement?.dataset?.resposta;
+
+  const abertos = encontros.filter((e) => e.status !== 'resolvido');
+  $('encontrosInicio').hidden = !abertos.length;
+  $('listaEncontrosInicio').replaceChildren(...abertos.slice(0, 2).map((e) => cartaoEncontro(e, false)));
+  $('listaEncontros').replaceChildren(...(encontros.length
+    ? encontros.slice(0, 10).map((e) => cartaoEncontro(e, true))
+    : [el('p', 'dica', 'Nenhum encontro registrado. Quando alguém escanear o QR e avisar, aparece aqui com o ponto exato no mapa.')]));
+
+  document.querySelectorAll('input[data-resposta]').forEach((i) => {
+    if (rascunhos[i.dataset.resposta]) i.value = rascunhos[i.dataset.resposta];
+    if (foco && i.dataset.resposta === foco && !document.activeElement?.dataset?.resposta) i.focus();
+  });
+  desenharEncontrosNoMapa();
+  aplicarPerfil();           // o status do pet muda para "Pet encontrado" (ou volta) junto com os encontros
+}
+
+// pins azuis: o ponto exato de onde a pessoa avisou pelo QR
+function desenharEncontrosNoMapa() {
+  camadaAchados.clearLayers();
+  encontros.filter((e) => e.lat && e.lng).slice(0, 15).forEach((enc) => {
+    const pop = el('div', 'pop-encontro');
+    pop.append(el('b', null, enc.status === 'resolvido' ? 'Encontro encerrado' : `Alguém encontrou ${nomePet()}`),
+      el('div', null, fmtTempo(enc.criadoEm)),
+      el('div', null, [ESTADO_PET[enc.estadoPet], ONDE_FICA[enc.ondeFica]].filter(Boolean).join(' · ')));
+    if (enc.precisao) pop.append(el('div', null, `Precisão de ~${enc.precisao} m`));
+    const rota = el('a', null, 'Traçar rota até lá'); rota.href = linkRota(enc.lat, enc.lng); rota.target = '_blank'; rota.rel = 'noopener';
+    pop.append(rota);
+    L.marker([enc.lat, enc.lng], {
+      zIndexOffset: 900, opacity: enc.status === 'resolvido' ? 0.55 : 1,
+      icon: L.divIcon({ className: '', html: `<div class="mk-achado ${enc.status !== 'resolvido' ? 'novo' : ''}"><svg><use href="#i-olho"/></svg></div>`, iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -38] })
+    }).bindPopup(pop).addTo(camadaAchados);
+    if (enc.precisao && enc.status !== 'resolvido') {
+      L.circle([enc.lat, enc.lng], { radius: enc.precisao, color: '#1971c2', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(camadaAchados);
+    }
+  });
+}
+
+// ============================================================ conta e vínculo da coleira
+function mostrarConta(email) {
+  $('contaLateral').hidden = false;
+  $('contaEmail').textContent = email;
+}
+$('btnSair').addEventListener('click', () => sair());
+
+function mostrarVinculo(uid) {
+  $('cartaoVincular').hidden = false;
+  $('uidColeira').value = uid || '';
+  $('statusVincular').textContent = uid ? 'Coleira vinculada. Só ela (e você) gravam os dados do pet.' : 'Nenhuma coleira vinculada ainda.';
+  $('statusVincular').className = 'qr-status ' + (uid ? 'ok' : '');
+}
+$('formVincular').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const uid = $('uidColeira').value.trim();
+  if (uid && !/^[A-Za-z0-9]{20,128}$/.test(uid)) {
+    $('statusVincular').textContent = 'Esse UID não parece certo. Copie a linha "UID DA COLEIRA" do Monitor Serial.';
+    $('statusVincular').className = 'qr-status erro';
+    return;
+  }
+  try {
+    await fs.updateDoc(fs.doc(db, 'acesso', PET_ID), { coleira: uid || null });
+    mostrarVinculo(uid);
+  } catch (err) {
+    $('statusVincular').textContent = 'Não foi possível vincular: ' + err.message;
+    $('statusVincular').className = 'qr-status erro';
+  }
+});
+
+// ============================================================ rede do bairro
+const CHAVE_DESC = 'bz-desc-' + PET_ID;
+async function iniciarComunidadePainel() {
+  try {
+    comunidade = await montarComunidade($('comunidade'), {
+      pet: {
+        id: PET_ID,
+        nome: nomePet,
+        foto: () => perfil.foto || '',
+        perdido: () => !!perfil.perdido,
+        posicao: () => saida || (ultimoEstado?.lat ? ultimoEstado : areaAtual()),
+        descricao: () => { try { return localStorage.getItem(CHAVE_DESC) || ''; } catch { return ''; } },
+        salvarDescricao: (d) => { try { if (d != null) localStorage.setItem(CHAVE_DESC, d); } catch { /* ok */ } }
+      },
+      area: areaAtual(),
+      avisar: (texto, confirmacao) => {
+        if (!confirmacao) avisar(texto);
+        mostrarAviso(texto, confirmacao ? null : 'Ver', confirmacao ? null : () => irPara('comunidade', true), 8000);
+      },
+      aoContar: (n) => { $('seloBairro').hidden = !n; $('seloBairro').textContent = n; }
+    });
+  } catch (err) {
+    console.error(err);
+    $('comunidade').innerHTML = '';
+    const p = document.createElement('p'); p.className = 'dica erro';
+    p.textContent = 'Não foi possível abrir a rede do bairro: ' + err.message;
+    $('comunidade').append(p);
+  }
+}
+// modo perdido ligado/desligado: publica (se o tutor marcou) ou encerra o alerta do bairro
+function sincronizarAlertaBairro(perdido) {
+  comunidade?.sincronizarPerdido(perdido).catch((err) => console.error('bairro', err));
+}
+
 // ============================================================ navegação (barra lateral)
-const SECOES = ['inicio', 'mapa', 'saude', 'alertas', 'perdido', 'testes'];
+const SECOES = ['inicio', 'mapa', 'saude', 'alertas', 'perdido', 'comunidade', 'testes'];
 let secaoAtual = null, mapaJaAberto = false;
 
 function irPara(sec, novaEntrada = false) {
@@ -984,7 +1320,11 @@ function irPara(sec, novaEntrada = false) {
     });
   } else if (movendoCasa) definirMovendo(false);
   if (sec === 'alertas') marcarAlertasLidos();
-  if (mudou) { window.scrollTo({ top: 0 }); $('sec-' + sec).focus({ preventScroll: true }); }
+  if (mudou) {
+    window.scrollTo({ top: 0 });
+    $('sec-' + sec).focus({ preventScroll: true });
+    $('aviso').hidden = true; acaoAviso = null;     // o aviso flutuante não acompanha a troca de tela
+  }
 }
 window.addEventListener('hashchange', () => irPara(location.hash.slice(1)));
 
@@ -1013,9 +1353,38 @@ function definirConexao(texto, classe) {
   });
 }
 
+// Garante que esta conta é a dona do pet. Na primeira vez, registra o dono.
+async function garantirAcesso(c, user) {
+  const ref = c.fs.doc(c.db, 'acesso', PET_ID);
+  const snap = await c.fs.getDoc(ref);
+  if (!snap.exists()) {
+    await c.fs.setDoc(ref, { dono: user.uid, coleira: null, criadoEm: c.fs.serverTimestamp() });
+    return { dono: user.uid, coleira: null };
+  }
+  return snap.data();
+}
+
 async function conectarFirebase() {
   const c = await abrirFirestore();
+  definirConexao('Entrar', 'simulacao');
+  const user = await exigirLogin({
+    titulo: 'Painel da coleira',
+    texto: `Entre para ver ${PET_NOME}. Os dados da coleira (posição, saúde e alertas) são privados: só você e a coleira acessam.`
+  });
+  let acesso;
+  try { acesso = await garantirAcesso(c, user); }
+  catch (err) {
+    console.error(err);
+    definirConexao('Sem acesso', 'erro');
+    $('status').textContent = `Esta conta (${user.email}) não é a dona de "${PET_ID}". Entre com a conta que cadastrou o pet.`;
+    mostrarConta(user.email);
+    return;
+  }
   fs = c.fs; db = c.db;
+  mostrarConta(user.email);
+  mostrarVinculo(acesso.coleira);
+  iniciarEncontros().then(() => ouvirEncontros((lista) => { encontros = lista; renderEncontros(); }));
+  iniciarComunidadePainel();
 
   fs.onSnapshot(fs.doc(db, 'perfis', PET_ID), (snap) => {
     const d = snap.exists() ? snap.data() : {};
@@ -1024,7 +1393,7 @@ async function conectarFirebase() {
   }, (err) => console.error('perfil', err));
 
   fs.onSnapshot(fs.doc(db, 'pets', PET_ID), (snap) => {
-    definirConexao('Ao vivo', 'ao-vivo');
+    definirConexao('Sincronizado', 'ao-vivo');
     if (!snap.exists()) { $('status').textContent = 'Nenhum dado da coleira ainda. Ligue a coleira ou use a área de testes.'; return; }
     const d = snap.data();
     renderEstado({ ...d, atualizadoEm: paraData(d.atualizadoEm) || new Date() });
@@ -1034,24 +1403,23 @@ async function conectarFirebase() {
     $('status').textContent = 'Erro ao ler o Firebase: ' + err.message;
   });
 
-  fs.onSnapshot(fs.doc(db, 'config', 'area'), (snap) => {
+  fs.onSnapshot(fs.doc(db, 'pets', PET_ID, 'config', 'area'), (snap) => {
     if (!snap.exists()) return;
     const d = snap.data();
     area = { lat: d.lat, lng: d.lng, raio: d.raio };
     desenharArea();                 // um rascunho em andamento continua sendo mostrado
   });
 
-  // resumos diários dos últimos 14 dias (id = {pet}_{AAAA-MM-DD}: dá para filtrar pelo id, sem índice extra)
-  const qSaude = fs.query(fs.collection(db, 'saude'),
-    fs.where(fs.documentId(), '>=', `${PET_ID}_${dataLocal(diasAtras(14))}`),
-    fs.where(fs.documentId(), '<=', `${PET_ID}_9999`));
+  // resumos diários dos últimos 14 dias (id = AAAA-MM-DD: dá para filtrar pelo id, sem índice extra)
+  const qSaude = fs.query(fs.collection(db, 'pets', PET_ID, 'saude'),
+    fs.where(fs.documentId(), '>=', dataLocal(diasAtras(14))));
   fs.onSnapshot(qSaude, (snap) => {
     diasSaude = {};
     snap.docs.forEach((d) => { const x = d.data(); if (x.data) diasSaude[x.data] = normalizarDia(x); });
     renderSaude();
   }, (err) => console.error('saude', err));
 
-  const q = fs.query(fs.collection(db, 'alertas'), fs.orderBy('criadoEm', 'desc'), fs.limit(40));
+  const q = fs.query(fs.collection(db, 'pets', PET_ID, 'alertas'), fs.orderBy('criadoEm', 'desc'), fs.limit(40));
   fs.onSnapshot(q, (snap) => {
     const lista = snap.docs.map((d) => ({ ...d.data(), id: d.id, data: paraData(d.data().criadoEm) }))
       .filter((a) => !a.pet || a.pet === PET_ID);
@@ -1063,7 +1431,11 @@ async function conectarFirebase() {
 setInterval(() => { if (ultimoEstado) renderEstado(ultimoEstado, false); }, 5000);
 new ResizeObserver(() => { map.invalidateSize(); desenharBpm(); }).observe($('map'));
 
-if (!configurado) carregarSaudeLocal();
+if (!configurado) {
+  carregarSaudeLocal();
+  iniciarEncontros().then(() => ouvirEncontros((lista) => { encontros = lista; renderEncontros(); }));
+  iniciarComunidadePainel();
+}
 irPara(location.hash.slice(1) || 'inicio');
 aplicarPerfil();
 desenharQR();
