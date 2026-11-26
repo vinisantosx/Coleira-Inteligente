@@ -1,8 +1,10 @@
-import { firebaseConfig, PET_ID, PET_NOME, AREA_PADRAO, SEM_SINAL_SEGUNDOS } from './firebase-config.js';
+import { PET_ID, PET_NOME, AREA_PADRAO, SEM_SINAL_SEGUNDOS } from './firebase-config.js';
+import {
+  configurado, abrirFirestore, PERFIL_PADRAO, perfilLocal, salvarPerfilLocal, avistamentosLocais,
+  adicionarAvistamentoLocal, CHAVE_PERFIL, CHAVE_AVISTAMENTOS, telefoneWhatsApp, telefoneBonito, urlPaginaQR, reduzirFoto
+} from './perfil-dados.js';
 
 const $ = (id) => document.getElementById(id);
-const FIREBASE_VERSAO = '10.12.2';
-const configurado = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'COLE_AQUI';
 
 // ============================================================ estado da página
 let area = carregarAreaLocal() || { ...AREA_PADRAO };   // área salva (a que vale para os alertas)
@@ -15,9 +17,11 @@ let alertasLocais = [];
 const historicoBpm = [];
 const trilha = [];
 let db = null, fs = null;
+let perfil = configurado ? { ...PERFIL_PADRAO } : perfilLocal();   // nome, foto, telefone, recado, perdido
+let formSujo = false, fotoNova;                                    // edição do perfil ainda não salva
+let idsAvistados = null;                                           // avistamentos já vistos (para avisar só os novos)
+const nomePet = () => perfil.nome || PET_NOME;
 
-$('nomePet').textContent = PET_NOME;
-document.title = `${PET_NOME} | Coleira inteligente`;
 
 const areaAtual = () => areaEditada || area;
 const mesmaArea = (a, b) => a.lat === b.lat && a.lng === b.lng && a.raio === b.raio;
@@ -50,6 +54,7 @@ const iconePet = (fora) => L.divIcon({
 });
 const marcadorPet = L.marker([area.lat, area.lng], { icon: iconePet(false), zIndexOffset: 1000 }).addTo(map);
 const camadaPatas = L.layerGroup().addTo(map);
+const camadaAchados = L.layerGroup().addTo(map);
 
 function desenharArea() {
   const a = areaAtual();
@@ -149,7 +154,7 @@ function renderEstado(e, novo = true) {
   // mapa
   if (temPosicao) {
     marcadorPet.setLatLng([e.lat, e.lng]).setIcon(iconePet(fora));
-    marcadorPet.bindPopup(`<b>${PET_NOME}</b> ${fora ? 'está FORA da área' : 'está dentro da área'}`);
+    marcadorPet.bindPopup(`<b>${nomePet()}</b> ${fora ? 'está FORA da área' : 'está dentro da área'}`);
     if (novo) adicionarPegada(e.lat, e.lng);
   }
 
@@ -185,30 +190,58 @@ function adicionarPegada(lat, lng) {
 const semSinal = (e) => e?.atualizadoEm && (Date.now() - e.atualizadoEm.getTime()) / 1000 > SEM_SINAL_SEGUNDOS;
 
 function atualizarStatus(e, fora, dist) {
+  e = e || { coleiraNoPet: true };
   let estado, etiqueta, texto;
   if (semSinal(e)) {
     estado = 'sem-sinal'; etiqueta = 'Sem sinal';
     texto = `A coleira não envia dados desde ${fmtHora(e.atualizadoEm)}.`;
   } else if (fora) {
     estado = 'fora'; etiqueta = 'Fora da área';
-    texto = `${PET_NOME} saiu da área segura! Veja no mapa onde ele está.`;
+    texto = `${nomePet()} saiu da área segura! Veja no mapa onde ele está.`;
   } else if (dist == null) {
     estado = 'aguardando'; etiqueta = 'Procurando GPS';
     texto = 'A coleira está ligada e aguardando sinal de GPS.';
   } else {
     estado = 'dentro'; etiqueta = 'Em casa';
-    texto = `${PET_NOME} está dentro da área segura. Tudo tranquilo por aqui.`;
+    texto = `${nomePet()} está dentro da área segura. Tudo tranquilo por aqui.`;
+  }
+  if (perfil.perdido) {
+    etiqueta = 'Modo perdido';
+    texto = `Procurando ${nomePet()}. A coleira pisca o LED e envia a posição a cada 3 segundos.`
+      + (dist != null ? ` Última posição a ${dist} m de casa.` : '');
   }
   document.body.dataset.estado = estado;
   $('etiquetaEstado').textContent = etiqueta;
   $('status').textContent = texto;
 
+  const temPos = e.lat && e.lng;
+  if (perfil.perdido) {
+    const desde = perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora';
+    $('banner').hidden = false;
+    $('banner').classList.remove('coleira');
+    $('banner').classList.add('perdido');
+    usar($('bannerIcone'), 'i-megafone');
+    $('bannerTitulo').textContent = 'Modo pet perdido ativo';
+    $('bannerTexto').textContent = `Desde ${desde}. Peça ajuda a vizinhos e grupos do bairro.`;
+    $('bannerMapa').hidden = !temPos;
+    if (temPos) $('bannerMapa').href = linkMapa(e.lat, e.lng);
+    $('bannerZapTexto').textContent = 'Pedir ajuda no WhatsApp';
+    $('bannerZap').href = linkZap(`${nomePet()} está perdido! ` + (temPos ? `Última localização: ${linkMapa(e.lat, e.lng)} ` : '')
+      + `Se encontrar, escaneie o QR da coleira ou abra: ${urlPaginaQR()}`);
+    $('btnEncontradoBanner').hidden = false;
+    return;
+  }
+  $('banner').classList.remove('perdido');
+  $('btnEncontradoBanner').hidden = true;
+  $('bannerMapa').hidden = false;
+  $('bannerZapTexto').textContent = 'Enviar no WhatsApp';
+
   const problema = fora ? 'fora' : !e.coleiraNoPet ? 'coleira' : null;
   $('banner').hidden = !problema;
   if (problema) {
     const msg = problema === 'fora'
-      ? `${PET_NOME} saiu da área segura e está a ${dist} m de casa.`
-      : `A coleira de ${PET_NOME} foi removida.`;
+      ? `${nomePet()} saiu da área segura e está a ${dist} m de casa.`
+      : `A coleira de ${nomePet()} foi removida.`;
     $('banner').classList.toggle('coleira', problema === 'coleira');
     usar($('bannerIcone'), problema === 'fora' ? 'i-corre' : 'i-tag');
     $('bannerTitulo').textContent = problema === 'fora' ? 'Pet fora de casa!' : 'Coleira removida!';
@@ -248,8 +281,10 @@ function desenharBpm() {
 // ============================================================ alertas
 const TIPO = {
   saiu_area: ['grave', 'i-corre'], coleira_removida: ['grave', 'i-tag'], bateria_baixa: ['aviso', 'i-bateria'],
-  voltou_area: ['bom', 'i-casa'], coleira_colocada: ['bom', 'i-check']
+  voltou_area: ['bom', 'i-casa'], coleira_colocada: ['bom', 'i-check'],
+  avistamento: ['achado', 'i-olho'], modo_perdido: ['grave', 'i-megafone'], pet_encontrado: ['bom', 'i-check']
 };
+const chaveAlerta = (a) => a.id || `${a.data?.getTime?.()}|${a.lat}|${a.mensagem}`;
 const NS = 'http://www.w3.org/2000/svg';
 function iconeSvg(id) {
   const s = document.createElementNS(NS, 'svg'), u = document.createElementNS(NS, 'use');
@@ -262,9 +297,8 @@ function renderAlertas(lista) {
   if (!lista.length) {
     const li = document.createElement('li'); li.className = 'vazio';
     li.append(iconeSvg('i-pata'), document.createTextNode('Nenhum alerta. Seu pet está tranquilo.'));
-    ul.append(li); return;
-  }
-  lista.forEach((a, i) => {
+    ul.append(li);
+  } else lista.forEach((a, i) => {
     const [classe, icone] = TIPO[a.tipo] || ['', 'i-sino'];
     const li = document.createElement('li');
     li.className = classe;
@@ -276,16 +310,69 @@ function renderAlertas(lista) {
       link.href = linkMapa(a.lat, a.lng); link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'ver no mapa';
       msg.append(' ', link);
     }
+    if (a.contatoNome || a.contatoTelefone) msg.append(linhaContato(a));
     const t = document.createElement('time');
     t.textContent = a.data ? a.data.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-';
     li.append(ic, msg, t);
     ul.append(li);
   });
+  desenharAchados(lista);
+  verificarAvistamentos(lista);
+}
+
+function linhaContato(a) {
+  const c = document.createElement('span'); c.className = 'contato';
+  c.textContent = 'Contato: ' + [a.contatoNome, telefoneBonito(a.contatoTelefone)].filter(Boolean).join(' · ');
+  const tel = telefoneWhatsApp(a.contatoTelefone);
+  if (tel.length >= 12) {
+    const z = document.createElement('a');
+    z.href = `https://wa.me/${tel}`; z.target = '_blank'; z.rel = 'noopener'; z.textContent = 'chamar no WhatsApp';
+    c.append(' ', z);
+  }
+  return c;
+}
+
+// pins azuis com o "olho": onde alguém encontrou o pet pela página do QR
+function desenharAchados(lista) {
+  camadaAchados.clearLayers();
+  lista.filter((a) => a.tipo === 'avistamento' && a.lat && a.lng).slice(0, 15).forEach((a) => {
+    const novo = idsAvistados && !idsAvistados.has(chaveAlerta(a));
+    const pop = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = a.mensagem;
+    const quando = document.createElement('div'); quando.textContent = a.data ? a.data.toLocaleString('pt-BR') : '';
+    pop.append(b, quando);
+    if (a.precisao) { const p = document.createElement('div'); p.textContent = `Precisão de ~${a.precisao} m`; pop.append(p); }
+    if (a.contatoNome || a.contatoTelefone) pop.append(linhaContato(a));
+    L.marker([a.lat, a.lng], {
+      zIndexOffset: 900,
+      icon: L.divIcon({ className: '', html: `<div class="mk-achado ${novo ? 'novo' : ''}"><svg><use href="#i-olho"/></svg></div>`, iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -38] })
+    }).bindPopup(pop).addTo(camadaAchados);
+  });
+}
+
+function verificarAvistamentos(lista) {
+  const avs = lista.filter((a) => a.tipo === 'avistamento');
+  if (idsAvistados) {
+    const novo = avs.find((a) => !idsAvistados.has(chaveAlerta(a)));
+    if (novo) {
+      avisar(`${novo.mensagem}`);
+      const temPos = novo.lat && novo.lng;
+      if (temPos) map.flyTo([novo.lat, novo.lng], 18);
+      mostrarAviso(`Alguém encontrou ${nomePet()}!`, temPos ? 'Ver no mapa' : null,
+        temPos ? () => { map.flyTo([novo.lat, novo.lng], 18); $('map').scrollIntoView({ behavior: 'smooth', block: 'center' }); } : null, 12000);
+    }
+  }
+  idsAvistados = new Set(avs.map(chaveAlerta));
+}
+
+function renderAlertasLocais() {
+  const avs = avistamentosLocais().map((a) => ({ ...a, data: new Date(a.data) }));
+  renderAlertas([...alertasLocais, ...avs].sort((x, y) => y.data - x.data));
 }
 
 function verificarMudancas(e, fora) {
-  if (anterior.fora === false && fora) avisar(`${PET_NOME} saiu da área segura!`);
-  if (anterior.coleiraNoPet === true && !e.coleiraNoPet) avisar(`A coleira de ${PET_NOME} foi removida!`);
+  if (anterior.fora === false && fora) avisar(`${nomePet()} saiu da área segura!`);
+  if (anterior.coleiraNoPet === true && !e.coleiraNoPet) avisar(`A coleira de ${nomePet()} foi removida!`);
   anterior = { fora, coleiraNoPet: e.coleiraNoPet };
 }
 
@@ -465,7 +552,7 @@ async function passoSimulador(forcar = false) {
   const dentro = dist <= area.raio;
   const base = dentro ? 92 : 138;
   const estado = {
-    nome: PET_NOME, lat: sim.lat, lng: sim.lng, gpsFix: true, satelites: 8,
+    nome: nomePet(), lat: sim.lat, lng: sim.lng, gpsFix: true, satelites: 8,
     batimentos: sim.coleiraNoPet ? Math.round(base + (Math.random() - 0.5) * 10) : 0,
     coleiraNoPet: sim.coleiraNoPet, dentroArea: dentro, distancia: Math.round(dist),
     bateria: Math.round(sim.bateria), atualizadoEm: new Date()
@@ -474,11 +561,11 @@ async function passoSimulador(forcar = false) {
 
   if (dentro !== sim.dentro) {
     sim.dentro = dentro;
-    await registrarAlerta(dentro ? 'voltou_area' : 'saiu_area', `${PET_NOME} ${dentro ? 'voltou para a área segura' : 'saiu da área segura'}`);
+    await registrarAlerta(dentro ? 'voltou_area' : 'saiu_area', `${nomePet()} ${dentro ? 'voltou para a área segura' : 'saiu da área segura'}`);
   }
 
   if (db) {
-    const intervalo = dentro ? 10000 : 3000;
+    const intervalo = dentro && !perfil.perdido ? 10000 : 3000;
     if (forcar || Date.now() - ultimoEnvioSim > intervalo) {
       ultimoEnvioSim = Date.now();
       await fs.setDoc(fs.doc(db, 'pets', PET_ID), { ...estado, atualizadoEm: fs.serverTimestamp() });
@@ -488,15 +575,25 @@ async function passoSimulador(forcar = false) {
   }
 }
 
-async function registrarAlerta(tipo, mensagem) {
-  const a = { pet: PET_ID, tipo, mensagem, lat: sim.lat, lng: sim.lng };
+async function registrarAlerta(tipo, mensagem, pos = sim) {
+  const a = { pet: PET_ID, tipo, mensagem, lat: pos?.lat ?? null, lng: pos?.lng ?? null };
   if (db) {
     await fs.addDoc(fs.collection(db, 'alertas'), { ...a, criadoEm: fs.serverTimestamp() });
   } else {
     alertasLocais.unshift({ ...a, data: new Date() });
     alertasLocais = alertasLocais.slice(0, 30);
-    renderAlertas(alertasLocais);
+    renderAlertasLocais();
   }
+}
+
+async function simularAvistamento() {
+  const a = {
+    pet: PET_ID, tipo: 'avistamento', mensagem: `Alguém encontrou ${nomePet()}: "Está aqui comigo na padaria da esquina."`,
+    lat: +(sim.lat + 0.00012).toFixed(6), lng: +(sim.lng + 0.00009).toFixed(6), precisao: 12,
+    contatoNome: 'Ana (simulação)', contatoTelefone: '71988887777'
+  };
+  if (db) await fs.addDoc(fs.collection(db, 'alertas'), { ...a, criadoEm: fs.serverTimestamp() });
+  else { adicionarAvistamentoLocal({ ...a, data: new Date().toISOString() }); renderAlertasLocais(); }
 }
 
 let timerSim = null;
@@ -520,12 +617,165 @@ document.querySelectorAll('[data-sim]').forEach((b) => b.addEventListener('click
   if (acao === 'coleira') {
     sim.coleiraNoPet = !sim.coleiraNoPet;
     await registrarAlerta(sim.coleiraNoPet ? 'coleira_colocada' : 'coleira_removida',
-      sim.coleiraNoPet ? `${PET_NOME} está com a coleira de novo` : `${PET_NOME} está sem a coleira (coleira removida)`);
+      sim.coleiraNoPet ? `${nomePet()} está com a coleira de novo` : `${nomePet()} está sem a coleira (coleira removida)`);
   }
   if (acao === 'passeio') { sim.rota = sim.rota ? null : rotaFuga(); }
+  if (acao === 'achado') await simularAvistamento();
   marcarPasseio(!!sim.rota);
   passoSimulador(true).catch(console.error);
 }));
+
+// ============================================================ perfil, QR e modo perdido
+function aplicarPerfil() {
+  $('nomePet').textContent = nomePet();
+  document.title = `${nomePet()} | Coleira inteligente`;
+  document.body.dataset.perdido = String(!!perfil.perdido);
+  $('btnPerdido').querySelector('span').textContent = perfil.perdido ? 'Pet encontrado' : 'Meu pet sumiu';
+  usar($('btnPerdido').querySelector('use'), perfil.perdido ? 'i-check' : 'i-megafone');
+  if (!formSujo) preencherPerfil();
+  if (ultimoEstado) renderEstado(ultimoEstado, false);
+  else atualizarStatus(null, false, null);
+}
+
+function preencherPerfil() {
+  $('perfilNome').value = perfil.nome || PET_NOME;
+  $('perfilTel').value = telefoneBonito(perfil.telefone);
+  $('perfilRecado').value = perfil.recado || '';
+  mostrarFoto(perfil.foto);
+}
+
+function mostrarFoto(url) {
+  $('perfilFotoPrev').hidden = !url;
+  if (url) $('perfilFotoPrev').src = url;
+  document.querySelector('.foto-escolher .foto-padrao').style.display = url ? 'none' : '';
+}
+
+function marcarPerfilSujo() {
+  formSujo = true;
+  $('dicaPerfil').className = 'dica';
+  $('dicaPerfil').textContent = 'Alterações não salvas';
+}
+['perfilNome', 'perfilTel', 'perfilRecado'].forEach((id) => $(id).addEventListener('input', marcarPerfilSujo));
+
+$('perfilFoto').addEventListener('change', async () => {
+  const arq = $('perfilFoto').files[0];
+  if (!arq) return;
+  try {
+    fotoNova = await reduzirFoto(arq);
+    mostrarFoto(fotoNova);
+    marcarPerfilSujo();
+  } catch (err) {
+    $('dicaPerfil').textContent = err.message;
+  }
+  $('perfilFoto').value = '';
+});
+
+async function gravarPerfil(campos) {
+  if (db) await fs.setDoc(fs.doc(db, 'perfis', PET_ID), { ...campos, atualizadoEm: fs.serverTimestamp() }, { merge: true });
+  else if (!salvarPerfilLocal({ ...perfil, ...campos })) throw new Error('o navegador não deixou salvar (armazenamento cheio ou bloqueado)');
+  perfil = { ...perfil, ...campos };
+}
+
+$('formPerfil').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const tel = $('perfilTel').value.replace(/\D/g, '');
+  if (tel && tel.length < 10) {
+    $('dicaPerfil').className = 'dica';
+    $('dicaPerfil').textContent = 'Confira o telefone: use DDD + número.';
+    $('perfilTel').focus();
+    return;
+  }
+  const campos = {
+    nome: $('perfilNome').value.trim() || PET_NOME,
+    telefone: tel,
+    recado: $('perfilRecado').value.trim(),
+    foto: fotoNova !== undefined ? fotoNova : perfil.foto || ''
+  };
+  $('btnSalvarPerfil').disabled = true;
+  try {
+    await gravarPerfil(campos);
+    formSujo = false; fotoNova = undefined;
+    $('dicaPerfil').className = 'dica salvo';
+    $('dicaPerfil').textContent = db ? 'Perfil salvo. A página do QR já mostra os novos dados.' : 'Perfil salvo neste navegador (modo simulação).';
+    aplicarPerfil();
+  } catch (err) {
+    console.error(err);
+    $('dicaPerfil').className = 'dica';
+    $('dicaPerfil').textContent = 'Não foi possível salvar: ' + err.message;
+  }
+  $('btnSalvarPerfil').disabled = false;
+});
+
+function desenharQR() {
+  const url = urlPaginaQR();
+  $('qrAbrir').href = url;
+  const local = location.protocol === 'file:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  if (local) {
+    $('qrDica').className = 'dica qr-dica atencao';
+    $('qrDica').textContent = 'Você está abrindo o site pelo computador. Gere o QR pelo site publicado (GitHub Pages), senão ele aponta para um endereço que só existe aqui.';
+  }
+  if (typeof qrcode !== 'function') {
+    $('qrDica').textContent = 'Não consegui carregar o gerador de QR. Confira a internet e recarregue.';
+    return;
+  }
+  const qr = qrcode(0, 'M');
+  qr.addData(url);
+  qr.make();
+  const n = qr.getModuleCount(), margem = 3, px = 10, cv = $('qrCanvas'), ctx = cv.getContext('2d');
+  cv.width = cv.height = (n + margem * 2) * px;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.fillStyle = '#1d1b3a';
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (qr.isDark(r, c)) ctx.fillRect((c + margem) * px, (r + margem) * px, px, px);
+  }
+  $('qrBaixar').href = cv.toDataURL('image/png');
+  $('qrBaixar').download = `qr-coleira-${PET_ID}.png`;
+}
+
+async function definirPerdido(valor) {
+  const campos = { perdido: valor, perdidoDesde: valor ? new Date() : null };
+  if (db) {
+    await fs.setDoc(fs.doc(db, 'perfis', PET_ID), { perdido: valor, perdidoDesde: valor ? fs.serverTimestamp() : null }, { merge: true });
+    perfil = { ...perfil, ...campos };
+  } else {
+    await gravarPerfil(campos);
+  }
+  aplicarPerfil();
+  const pos = ultimoEstado?.lat ? ultimoEstado : null;
+  await registrarAlerta(valor ? 'modo_perdido' : 'pet_encontrado',
+    valor ? `Modo pet perdido ativado para ${nomePet()}` : `${nomePet()} foi encontrado. Modo perdido desativado`, pos);
+}
+
+async function ativarPerdido() {
+  try {
+    await definirPerdido(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    mostrarAviso('Modo pet perdido ativado', 'Desfazer', () => definirPerdido(false).catch(falhaPerdido));
+  } catch (err) { falhaPerdido(err); }
+}
+
+async function marcarEncontrado() {
+  try {
+    await definirPerdido(false);
+    mostrarAviso(`Que bom que ${nomePet()} voltou!`, 'Desfazer', () => definirPerdido(true).catch(falhaPerdido));
+  } catch (err) { falhaPerdido(err); }
+}
+function falhaPerdido(err) { console.error(err); mostrarAviso('Não foi possível mudar o modo perdido: ' + err.message, null, null, 6000); }
+
+$('btnPerdido').addEventListener('click', () => {
+  if (perfil.perdido) return marcarEncontrado();
+  const d = $('dlgPerdido');
+  if (typeof d.showModal === 'function') d.showModal(); else ativarPerdido();
+});
+$('dlgPerdido').addEventListener('close', () => { if ($('dlgPerdido').returnValue === 'ativar') ativarPerdido(); });
+$('btnEncontradoBanner').addEventListener('click', marcarEncontrado);
+
+// modo simulação: a página do QR aberta em outra aba do mesmo navegador conversa por aqui
+window.addEventListener('storage', (ev) => {
+  if (db) return;
+  if (ev.key === CHAVE_AVISTAMENTOS) renderAlertasLocais();
+  if (ev.key === CHAVE_PERFIL) { perfil = perfilLocal(); aplicarPerfil(); }
+});
 
 // ============================================================ conexão
 function definirConexao(texto, classe) {
@@ -534,9 +784,14 @@ function definirConexao(texto, classe) {
 }
 
 async function conectarFirebase() {
-  const app = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSAO}/firebase-app.js`);
-  fs = await import(`https://www.gstatic.com/firebasejs/${FIREBASE_VERSAO}/firebase-firestore.js`);
-  db = fs.getFirestore(app.initializeApp(firebaseConfig));
+  const c = await abrirFirestore();
+  fs = c.fs; db = c.db;
+
+  fs.onSnapshot(fs.doc(db, 'perfis', PET_ID), (snap) => {
+    const d = snap.exists() ? snap.data() : {};
+    perfil = { ...PERFIL_PADRAO, ...d, perdidoDesde: paraData(d.perdidoDesde) };
+    aplicarPerfil();
+  }, (err) => console.error('perfil', err));
 
   fs.onSnapshot(fs.doc(db, 'pets', PET_ID), (snap) => {
     definirConexao('Ao vivo', 'ao-vivo');
@@ -558,7 +813,7 @@ async function conectarFirebase() {
 
   const q = fs.query(fs.collection(db, 'alertas'), fs.orderBy('criadoEm', 'desc'), fs.limit(40));
   fs.onSnapshot(q, (snap) => {
-    const lista = snap.docs.map((d) => ({ ...d.data(), data: paraData(d.data().criadoEm) }))
+    const lista = snap.docs.map((d) => ({ ...d.data(), id: d.id, data: paraData(d.data().criadoEm) }))
       .filter((a) => !a.pet || a.pet === PET_ID);
     renderAlertas(lista);
   });
@@ -568,7 +823,9 @@ async function conectarFirebase() {
 setInterval(() => { if (ultimoEstado) renderEstado(ultimoEstado, false); }, 5000);
 new ResizeObserver(() => { map.invalidateSize(); desenharBpm(); }).observe($('map'));
 
-renderAlertas([]);
+aplicarPerfil();
+desenharQR();
+if (!configurado) renderAlertasLocais(); else renderAlertas([]);
 desenharArea();
 if (configurado) {
   conectarFirebase().catch((err) => {

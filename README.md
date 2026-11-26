@@ -42,6 +42,23 @@ Coleções usadas:
 | `config/area` | site | `lat`, `lng`, `raio` |
 | `alertas/*` | coleira | `pet`, `tipo`, `mensagem`, `lat`, `lng`, `criadoEm` |
 
+## Modo pet perdido
+
+1. No painel, em **Perfil e QR da coleira**, coloque a foto, o WhatsApp do tutor e um recado para quem encontrar o pet (cuidados, remédios, temperamento). Depois clique em **Salvar perfil**.
+2. Clique em **Baixar QR**, imprima com 22 × 22 mm e cole no rebaixo da tampa. Gere o QR pelo site **publicado**: aberto pelo Live Server, ele aponta para um endereço que só existe no seu computador.
+3. Se o pet sumir, clique em **Meu pet sumiu** e confirme. A partir daí:
+   - o LED da coleira pisca em dupla, sem parar, e a coleira envia a posição a cada 3 s;
+   - a página do QR (`perdido.html`) mostra "Estou perdido!" e pede ajuda;
+   - o botão **Pedir ajuda no WhatsApp** monta uma mensagem com a última posição e o link da página do QR, para mandar a vizinhos e grupos do bairro.
+4. Quem escaneia o QR pode enviar a localização do próprio celular, deixar um recado e o contato, ou chamar o tutor no WhatsApp. O painel avisa na hora, com som e notificação, e marca no mapa um pino azul com um olho.
+5. Quando o pet voltar, clique em **Pet encontrado**.
+
+No modo simulação, abra o painel e a `perdido.html` em duas abas do mesmo navegador: uma conversa com a outra. O botão "Alguém encontrou o pet", na área de testes, simula um aviso.
+
+Novas coleções: `perfis/{pet}` (perfil público e o campo `perdido`) e avisos do tipo `avistamento` em `alertas`. Atualize as regras com o novo `site/firestore.rules`.
+
+**Privacidade:** a página do QR é pública e mostra o telefone cadastrado. Coloque só o número que você aceita divulgar.
+
 ## 3. Firmware (Arduino IDE)
 
 1. Instale a placa **esp32** (Espressif) e escolha "ESP32 Dev Module".

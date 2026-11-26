@@ -13,6 +13,7 @@
   Estrutura no Firestore:
     pets/{PET_ID}        <- estado atual (escrito pela coleira)
     config/area          <- casa e raio (escrito pelo site)
+    perfis/{PET_ID}      <- campo "perdido" (modo pet perdido, ligado pelo site)
     alertas/{auto}       <- historico de eventos (escrito pela coleira)
 */
 #include <WiFi.h>
@@ -36,6 +37,7 @@ struct Estado {
   bool   dentroArea = true;
   double distancia = 0;
   int    bateriaPct = 100;
+  bool   perdido = false;      // modo pet perdido ligado pelo tutor no site
 };
 struct Area { double lat = CASA_LAT_PADRAO, lng = CASA_LNG_PADRAO, raio = RAIO_PADRAO_M; };
 
@@ -180,11 +182,13 @@ void lerGPS() {
 
 void atualizarLED() {
   xSemaphoreTake(trava, portMAX_DELAY);
-  bool fora = !estado.dentroArea, fix = estado.gpsFix;
+  bool fora = !estado.dentroArea, fix = estado.gpsFix, perdido = estado.perdido;
   xSemaphoreGive(trava);
   unsigned long t = millis();
   bool ligado;
-  if (fora)      ligado = (t / 150) % 2;               // pisca rapido: "estou perdido"
+  unsigned long c = t % 700;
+  if (perdido)   ligado = c < 70 || (c > 140 && c < 210); // pisca-pisca duplo sem parar: modo perdido
+  else if (fora) ligado = (t / 150) % 2;               // pisca rapido: "estou fora de casa"
   else if (!fix) ligado = (t % 2000) < 40;             // procurando satelites
   else           ligado = (t % 5000) < 40;             // ok, em casa
   digitalWrite(PINO_LED, ligado);
@@ -244,6 +248,23 @@ void buscarArea() {
   Serial.printf("[area] casa %.6f, %.6f raio %.0f m\n", la, ln, r);
 }
 
+// modo pet perdido: o tutor liga/desliga no site (perfis/{PET_ID}.perdido)
+void buscarModoPerdido() {
+  String resp;
+  // mask.fieldPaths: o Firestore devolve so o campo "perdido" (sem a foto do pet)
+  int cod = requisicao("GET", urlFirestore("perfis/" PET_ID) + "&mask.fieldPaths=perdido", "", &resp);
+  if (cod == 404) return;                                   // perfil ainda nao criado
+  if (cod != 200) { Serial.printf("[perdido] GET %d\n", cod); return; }
+  JsonDocument doc;
+  if (deserializeJson(doc, resp)) return;
+  bool perdido = doc["fields"]["perdido"]["booleanValue"] | false;
+  xSemaphoreTake(trava, portMAX_DELAY);
+  bool mudou = perdido != estado.perdido;
+  estado.perdido = perdido;
+  xSemaphoreGive(trava);
+  if (mudou) Serial.printf("[perdido] modo pet perdido %s\n", perdido ? "LIGADO" : "desligado");
+}
+
 void publicarEstado(const Estado &e) {
   JsonDocument doc;
   JsonObject f = doc["fields"].to<JsonObject>();
@@ -257,6 +278,7 @@ void publicarEstado(const Estado &e) {
   f["dentroArea"]["booleanValue"] = e.dentroArea;
   f["distancia"]["doubleValue"] = round(e.distancia);
   f["bateria"]["integerValue"] = String(e.bateriaPct);
+  f["modoPerdido"]["booleanValue"] = e.perdido;
   String iso = agoraISO();
   if (iso.length()) f["atualizadoEm"]["timestampValue"] = iso;
   String corpo; serializeJson(doc, corpo);
@@ -311,7 +333,7 @@ void tarefaRede(void *) {
   for (;;) {
     if (!conectarWiFi()) { vTaskDelay(pdMS_TO_TICKS(5000)); continue; }
 
-    if (primeira || millis() - ultConfig > INTERVALO_CONFIG_MS) { buscarArea(); ultConfig = millis(); }
+    if (primeira || millis() - ultConfig > INTERVALO_CONFIG_MS) { buscarArea(); buscarModoPerdido(); ultConfig = millis(); }
 
     Evento ev;
     while (xQueueReceive(filaEventos, &ev, 0) == pdTRUE) { tratarEvento(ev); ultEnvio = 0; }
@@ -319,7 +341,7 @@ void tarefaRede(void *) {
     xSemaphoreTake(trava, portMAX_DELAY);
     Estado copia = estado;
     xSemaphoreGive(trava);
-    unsigned long intervalo = copia.dentroArea ? INTERVALO_ENVIO_MS : INTERVALO_ALERTA_MS;
+    unsigned long intervalo = (copia.dentroArea && !copia.perdido) ? INTERVALO_ENVIO_MS : INTERVALO_ALERTA_MS;
     if (primeira || ultEnvio == 0 || millis() - ultEnvio > intervalo) {
       publicarEstado(copia);
       ultEnvio = millis();

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Encontrou este pet?</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body class="pagina-qr" data-perdido="false">
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <symbol id="i-pata" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="5" ry="4.2"/><circle cx="5.5" cy="10" r="2.2"/><circle cx="9.5" cy="6.2" r="2.3"/><circle cx="14.5" cy="6.2" r="2.3"/><circle cx="18.5" cy="10" r="2.2"/></symbol>
+        <symbol id="i-mapa" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></symbol>
+        <symbol id="i-zap" viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2s-1 .3-3.4-.7a11.7 11.7 0 0 1-4.6-4.1c-.4-.5-1-1.6-1-2.9a3.2 3.2 0 0 1 1-2.4c.3-.3.6-.4.8-.4h.6c.2 0 .4 0 .6.5l.9 2.1c.1.2.1.4 0 .6l-.4.6-.4.5c-.2.2-.3.3-.1.7a8.4 8.4 0 0 0 1.6 2 7.4 7.4 0 0 0 2.3 1.4c.3.2.5.1.7-.1l.9-1.1c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.3s.1.7-.1 1.3z"/></symbol>
+        <symbol id="i-fone" viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><path d="m9.5 16.6-4.6-4.6-1.6 1.6 6.2 6.2L21 8.3l-1.6-1.6z"/></symbol>
+        <symbol id="i-cao" viewBox="0 0 120 120">
+          <ellipse cx="27" cy="52" rx="17" ry="30" transform="rotate(18 27 52)" fill="#8a5a3b"/>
+          <ellipse cx="93" cy="52" rx="17" ry="30" transform="rotate(-18 93 52)" fill="#8a5a3b"/>
+          <circle cx="60" cy="58" r="38" fill="#e8b07a"/>
+          <ellipse cx="60" cy="76" rx="22" ry="17" fill="#fbe3c6"/>
+          <ellipse cx="76" cy="44" rx="11" ry="10" fill="#c98a55"/>
+          <circle cx="45" cy="52" r="5.5" fill="#1d1b3a"/><circle cx="75" cy="52" r="5.5" fill="#1d1b3a"/>
+          <circle cx="47" cy="50" r="1.8" fill="#fff"/><circle cx="77" cy="50" r="1.8" fill="#fff"/>
+          <ellipse cx="60" cy="68" rx="8" ry="5.5" fill="#1d1b3a"/>
+          <path d="M60 73v5m-8 1c3 4 13 4 16 0" stroke="#1d1b3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+          <path d="M28 92c18 10 46 10 64 0l2 9c-20 11-48 11-68 0z" fill="#ff7a45"/>
+          <circle cx="60" cy="106" r="7" fill="#ffc94a" stroke="#e0a41f" stroke-width="2"/>
+        </symbol>
+      </defs>
+    </svg>
+
+    <main class="qr-cartao" aria-live="polite">
+      <div class="qr-faixa" id="faixa" hidden>
+        <svg><use href="#i-pata"/></svg> Estou perdido! Me ajude a voltar para casa
+      </div>
+
+      <div class="qr-foto">
+        <img id="foto" alt="" hidden />
+        <svg id="fotoPadrao" viewBox="0 0 120 120" aria-hidden="true"><use href="#i-cao"/></svg>
+      </div>
+
+      <h1>Oi! Eu sou <span id="nome">...</span></h1>
+      <p class="qr-intro" id="intro">Esta é a minha coleira inteligente. Se eu estiver sozinho por aí, avise meu tutor.</p>
+
+      <div class="qr-recado" id="caixaRecado" hidden>
+        <strong>Recado do meu tutor</strong>
+        <p id="recado"></p>
+      </div>
+
+      <section class="qr-acao" id="acao">
+        <button type="button" class="qr-botao" id="btnEnviar">
+          <svg><use href="#i-mapa"/></svg>
+          <span>Enviar minha localização ao tutor</span>
+        </button>
+        <details class="qr-extra">
+          <summary>Deixar um recado ou seu contato (opcional)</summary>
+          <label>Seu nome <input id="finderNome" autocomplete="name" maxlength="60" /></label>
+          <label>Seu telefone <input id="finderTel" type="tel" autocomplete="tel" maxlength="20" /></label>
+          <label>Mensagem <textarea id="finderMsg" rows="2" maxlength="280" placeholder="Ex.: Está comigo na portaria do prédio azul."></textarea></label>
+        </details>
+        <p class="qr-status" id="statusEnvio"></p>
+        <button type="button" class="qr-link" id="btnSemLocal" hidden>Enviar mesmo sem localização</button>
+      </section>
+
+      <section class="qr-sucesso" id="sucesso" hidden>
+        <span class="qr-sucesso-icone"><svg><use href="#i-check"/></svg></span>
+        <h2>Obrigado! Meu tutor foi avisado.</h2>
+        <p>Se puder, fique comigo um pouquinho ou fale com ele pelos botões abaixo.</p>
+      </section>
+
+      <div class="qr-contatos" id="contatos" hidden>
+        <a id="lnkZap" class="qr-zap" href="#" target="_blank" rel="noopener"><svg><use href="#i-zap"/></svg>WhatsApp do tutor</a>
+        <a id="lnkTel" class="qr-tel" href="#"><svg><use href="#i-fone"/></svg><span id="telTexto">Ligar</span></a>
+      </div>
+
+      <p class="qr-rodape">Sua localização só é enviada se você tocar no botão e permitir no navegador.</p>
+    </main>
+
+    <script type="module" src="perdido.js"></script>
+  </body>
+</html>
