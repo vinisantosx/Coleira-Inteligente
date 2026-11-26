@@ -5,6 +5,7 @@
   Nucleo 0 (tarefa): Wi-Fi, envio ao Firestore (REST), leitura da area segura, alertas WhatsApp
 
   Bibliotecas (Gerenciador de Bibliotecas da Arduino IDE):
+    - UniversalTelegramBot        (Brian Lough)  -> bot do Telegram (telegram.h)
     - TinyGPSPlus                 (Mikal Hart)
     - SparkFun MAX3010x Pulse and Proximity Sensor Library
     - ArduinoJson  v7             (Benoit Blanchon)
@@ -49,6 +50,9 @@ struct Estado {
   int    bpmRepouso = 0;       // media dos ultimos minutos em repouso
   bool   emRepouso = false;
   int8_t saudeAlerta = 0;      // 1 = acima do normal, -1 = abaixo, 0 = normal
+  float  precisaoM = 0;        // precisao aproximada do GPS (HDOP x 5 m)
+  float  velocidadeKmh = 0;
+  unsigned long fixEm = 0;     // millis() da ultima posicao valida
 };
 struct Dia {                   // acumulado do dia (vai para saude/{PET_ID}_{data})
   char   data[11] = "";        // "AAAA-MM-DD" na hora local; vazio ate o NTP sincronizar
@@ -77,6 +81,7 @@ HardwareSerial SerialGPS(2);
 MAX30105 sensor;
 bool sensorOk = false;
 volatile long ultimoIR = 0;
+volatile int8_t perdidoMudouPeloSite = -1;   // 1 ligou, 0 desligou, -1 nada (avisa o Telegram)
 
 // ------------------------------------------------ batimentos
 const byte N_MEDIA = 6;
@@ -256,6 +261,9 @@ void lerGPS() {
   if (fix) {
     estado.lat = gps.location.lat();
     estado.lng = gps.location.lng();
+    estado.fixEm = millis();
+    estado.precisaoM = gps.hdop.isValid() ? gps.hdop.hdop() * 5.0f : 0;
+    estado.velocidadeKmh = gps.speed.isValid() ? gps.speed.kmph() : 0;
     estado.distancia = distanciaMetros(a.lat, a.lng, estado.lat, estado.lng);
     bool dentro = estado.distancia <= a.raio;
     if (dentro != estado.dentroArea) {
@@ -351,7 +359,10 @@ void buscarModoPerdido() {
   bool mudou = perdido != estado.perdido;
   estado.perdido = perdido;
   xSemaphoreGive(trava);
-  if (mudou) Serial.printf("[perdido] modo pet perdido %s\n", perdido ? "LIGADO" : "desligado");
+  if (mudou) {
+    Serial.printf("[perdido] modo pet perdido %s\n", perdido ? "LIGADO" : "desligado");
+    perdidoMudouPeloSite = perdido ? 1 : 0;
+  }
 }
 
 void publicarEstado(const Estado &e) {
@@ -402,6 +413,10 @@ const char *codigoEvento(TipoEvento t) {
   return c[t];
 }
 
+#if TELEGRAM_ATIVO
+#include "telegram.h"
+#endif
+
 void tratarEvento(const Evento &ev) {
   JsonDocument doc;
   JsonObject f = doc["fields"].to<JsonObject>();
@@ -415,6 +430,10 @@ void tratarEvento(const Evento &ev) {
   String corpo; serializeJson(doc, corpo);
   int cod = requisicao("POST", urlFirestore("alertas"), corpo);
   Serial.printf("[alerta] %s -> %d\n", codigoEvento(ev.tipo), cod);
+
+#if TELEGRAM_ATIVO
+  alertaTelegram(ev.tipo, ev.lat, ev.lng);
+#endif
 
 #if WHATSAPP_ATIVO
   if (ev.tipo == SAIU_AREA || ev.tipo == COLEIRA_REMOVIDA || ev.tipo == BATERIA_BAIXA ||
@@ -540,12 +559,22 @@ void tarefaRede(void *) {
   for (;;) {
     if (!conectarWiFi()) { vTaskDelay(pdMS_TO_TICKS(5000)); continue; }
 
+#if TELEGRAM_ATIVO
+    static bool telegramPronto = false;
+    if (!telegramPronto) { iniciarTelegram(); telegramPronto = true; }
+#endif
+
     if (primeira || millis() - ultConfig > INTERVALO_CONFIG_MS) { buscarArea(); buscarModoPerdido(); ultConfig = millis(); }
 
     Evento ev;
     while (xQueueReceive(filaEventos, &ev, 0) == pdTRUE) { tratarEvento(ev); ultEnvio = 0; }
 
     cuidarDoDia();
+
+#if TELEGRAM_ATIVO
+    if (perdidoMudouPeloSite >= 0) { avisarPerdidoPeloSite(perdidoMudouPeloSite == 1); perdidoMudouPeloSite = -1; }
+    cuidarTelegram();     // le comandos e atualiza o "ao vivo" (tempo real)
+#endif
 
     xSemaphoreTake(trava, portMAX_DELAY);
     Estado copia = estado;
@@ -586,7 +615,7 @@ void setup() {
   // pisca 3x: ligou
   for (int i = 0; i < 3; i++) { digitalWrite(PINO_LED, 1); delay(120); digitalWrite(PINO_LED, 0); delay(120); }
 
-  xTaskCreatePinnedToCore(tarefaRede, "rede", 12288, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(tarefaRede, "rede", 16384, nullptr, 1, nullptr, 0);   // TLS do Firebase + Telegram
 }
 
 void loop() {

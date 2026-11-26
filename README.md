@@ -82,11 +82,36 @@ Para testar sem hardware, use a área de testes: "Gerar 14 dias de histórico" e
 - É acompanhamento de tendência, não diagnóstico: o sensor é óptico e o pelo atrapalha a leitura.
 - Sem acelerômetro, o repouso é deduzido pelo GPS. Um MPU6050 deixaria a detecção de repouso, sono e brincadeira muito mais precisa.
 
+## Bot do Telegram (reaproveitado do projeto anterior)
+
+O bot do projeto anterior (ESP32 + GPS + UniversalTelegramBot) agora faz parte da coleira, no arquivo `firmware/coleira_esp32/telegram.h`. Ele usa os mesmos dados em tempo real que o site.
+
+| Botão / comando | O que faz |
+|---|---|
+| 📍 Localização · `/localizacao` | Pino no mapa + link, precisão do GPS, distância de casa e se está dentro ou fora da área. Sem sinal, mostra a última posição conhecida e há quanto tempo. |
+| 🛰️ Ao vivo · `/aovivo` | Localização em tempo real do Telegram por 15 min: o pino anda sozinho a cada 10 s |
+| ⏹️ Parar ao vivo · `/parar` | Encerra o ao vivo |
+| 🐾 Status · `/status` | Coleira no pet, batimentos, bateria, GPS, Wi-Fi |
+| ❤️ Saúde · `/saude` | Batimento em repouso x normal dele, atividade do dia |
+| 🚨 Pet perdido · `/perdido` | Liga o modo pet perdido: LED, site e página do QR. Todos os IDs recebem o ao vivo. |
+| 🏠 Pet encontrado · `/encontrado` | Desliga o modo perdido |
+
+A coleira também manda para todos os IDs autorizados os alertas de saída da área, coleira removida, bateria baixa e batimento fora do normal. Quando o pet sai da área, ou quando o modo perdido é ligado pelo site, o ao vivo começa sozinho.
+
+**Configuração (no `config.h`):**
+1. No @BotFather, pegue o token **completo**, no formato `1234567890:AAH...`, e coloque em `TELEGRAM_TOKEN`.
+2. Grave a coleira e mande `/start` para o bot: ele responde "Você não possui permissão. Seu ID é ...".
+3. Coloque esse ID em `TELEGRAM_IDS`. Para mais de uma pessoa, separe os IDs por vírgula. Grave de novo.
+
+**Biblioteca:** UniversalTelegramBot (Brian Lough), pelo Gerenciador de Bibliotecas. Ela usa o ArduinoJson; com a versão 7 aparecem avisos de "deprecated" na compilação, que podem ser ignorados.
+
+O WhatsApp (CallMeBot) agora vem desligado (`WHATSAPP_ATIVO 0`), porque o Telegram já cobre os alertas. Dá para ligar os dois.
+
 ## 3. Firmware (Arduino IDE)
 
 1. Instale a placa **esp32** (Espressif) e escolha "ESP32 Dev Module".
-2. Pelo Gerenciador de Bibliotecas, instale **TinyGPSPlus**, **SparkFun MAX3010x Pulse and Proximity Sensor Library** e **ArduinoJson** (v7).
-3. Preencha `config.h`: Wi-Fi, `FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY` (os mesmos do site), o telefone e a apikey do CallMeBot.
+2. Pelo Gerenciador de Bibliotecas, instale **UniversalTelegramBot**, **TinyGPSPlus**, **SparkFun MAX3010x Pulse and Proximity Sensor Library** e **ArduinoJson** (v7).
+3. Preencha `config.h`: Wi-Fi, `FIREBASE_PROJECT_ID`, `FIREBASE_API_KEY` (os mesmos do site), o token e os IDs do Telegram.
 4. Grave e abra o Monitor Serial (115200). A linha `[debug] IR ...` mostra o valor do sensor. Anote o valor com a coleira no pet e fora dele e ajuste `LIMIAR_PRESENCA_IR` entre os dois.
 
 Como funciona: o núcleo 1 lê o GPS, o MAX30102 e a bateria e controla o LED. O núcleo 0 cuida do Wi-Fi e dos envios. Assim, as requisições HTTPS não atrapalham a leitura dos batimentos.
