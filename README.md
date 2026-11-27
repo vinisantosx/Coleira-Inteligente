@@ -58,7 +58,7 @@ A posição da coleira em casa revela o endereço, por isso ela nunca é públic
 
 1. No painel, em **Perfil e QR da coleira**, coloque a foto, o WhatsApp do tutor e um recado para quem encontrar o pet (cuidados, remédios, temperamento). Depois clique em **Salvar perfil**.
 2. Clique em **Baixar QR**, imprima com 22 × 22 mm e cole no rebaixo da tampa. Gere o QR pelo site **publicado**: aberto pelo Live Server, ele aponta para um endereço que só existe no seu computador.
-3. Se o pet sumir, clique em **Meu pet sumiu** e confirme. A partir daí:
+3. Se o pet sumir, clique em **Ativar modo perdido** e confirme. A partir daí:
    - o LED da coleira pisca em dupla, sem parar (fora da área ele já pisca sozinho);
    - a página do QR (`perdido.html`) mostra "Estou perdido!" e pede ajuda;
    - o botão **Pedir ajuda no WhatsApp** monta uma mensagem com a última posição e o link da página do QR, para mandar a vizinhos e grupos do bairro.
@@ -66,7 +66,7 @@ A posição da coleira em casa revela o endereço, por isso ela nunca é públic
 5. **O status do pet muda para "Pet encontrado"** no painel (menu, faixa do topo, cartão do modo perdido e Início), com nome, telefone, hora, estado do pet e onde ele está de quem confirmou. Quem escanear o QR depois vê "Já me encontraram! Meu tutor foi avisado". O painel avisa na hora (som e notificação) e mostra o cartão do encontro no Início e em Pet perdido: ponto exato no mapa com o círculo de precisão, **Traçar rota até lá**, WhatsApp e ligação, estado do pet, foto e uma **conversa** com quem encontrou (respostas rápidas como "Estou a caminho!"). A pessoa vê as respostas na própria página do QR e pode atualizar a localização se mudar de lugar.
 6. Quando estiver com o pet, clique em **Já estou com ele** (faixa do topo, cartão ou modo perdido). Os encontros são encerrados, o modo perdido desliga, o alerta do bairro é encerrado, o aviso some de todas as telas e a página do QR agradece. O histórico de alertas registra quem encontrou.
 
-Fora da área, o painel mostra o aviso "saiu da área segura" com a hora e o **último ponto registrado**, além dos atalhos **Ativar modo perdido**, **Pedir ajuda no WhatsApp** e **Entendi** (esconde o aviso até a próxima saída).
+Fora da área, o painel mostra o aviso "saiu da área segura" com a hora e o **último ponto registrado**, além dos atalhos **Ativar modo perdido**, **Pedir ajuda no WhatsApp** e **Ocultar aviso** (esconde o aviso até a próxima saída).
 
 No modo simulação, abra o painel e a `perdido.html` em duas abas do mesmo navegador: uma conversa com a outra. O botão "Alguém encontrou o pet", na área de testes, simula um encontro. Na simulação, quando o pet sai da área, a coleira para de sincronizar (como faria sem Wi-Fi) até ele voltar.
 

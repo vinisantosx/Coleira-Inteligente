@@ -3,21 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Coleira inteligente | Acompanhamento</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
+    <title>Coleira | Monitor do pet</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body data-estado="aguardando">
-    <!-- símbolos reutilizados -->
     <svg width="0" height="0" style="position:absolute" aria-hidden="true">
       <defs>
         <symbol id="i-pata" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="5" ry="4.2"/><circle cx="5.5" cy="10" r="2.2"/><circle cx="9.5" cy="6.2" r="2.3"/><circle cx="14.5" cy="6.2" r="2.3"/><circle cx="18.5" cy="10" r="2.2"/></symbol>
         <symbol id="i-casa" viewBox="0 0 24 24"><path d="M12 3 2.5 11h2.7v9h5.3v-5.5h3v5.5h5.3v-9h2.7z"/></symbol>
         <symbol id="i-desfazer" viewBox="0 0 24 24"><path d="M9 5 3.5 10.5 9 16v-3.8c4.6 0 7.6 1.4 9.7 5.3-.6-5.4-3.4-9.6-9.7-10.3z"/></symbol>
         <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M3 20.5 21.5 12 3 3.5v6.6l13 1.9-13 1.9z"/></symbol>
+        <symbol id="i-osso" viewBox="0 0 24 24"><path d="M6.6 3.5a2.6 2.6 0 0 0-2.4 3.6 2.6 2.6 0 1 0 3.3 3.3l6.1 6.1a2.6 2.6 0 1 0 3.3 3.3 2.6 2.6 0 1 0 3.6-2.4 2.6 2.6 0 0 0-3.6-2.4l-6.1-6.1a2.6 2.6 0 0 0-4.2-5.4z"/></symbol>
+        <symbol id="i-ferramenta" viewBox="0 0 24 24"><path d="M21.7 6.3a6 6 0 0 1-7.9 7.4L6.4 21.1a2.1 2.1 0 0 1-3-3l7.4-7.4a6 6 0 0 1 7.4-7.9l-3.6 3.6.9 2.5 2.5.9z"/></symbol>
         <symbol id="i-check" viewBox="0 0 24 24"><path d="m9.5 16.6-4.6-4.6-1.6 1.6 6.2 6.2L21 8.3l-1.6-1.6z"/></symbol>
         <symbol id="i-x" viewBox="0 0 24 24"><path d="m18.3 7.1-1.4-1.4L12 10.6 7.1 5.7 5.7 7.1l4.9 4.9-4.9 4.9 1.4 1.4 4.9-4.9 4.9 4.9 1.4-1.4-4.9-4.9z"/></symbol>
         <symbol id="i-corre" viewBox="0 0 24 24"><path d="M13.5 5.5a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9.8 8.9 7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3A7.3 7.3 0 0 0 19 13v-2a5 5 0 0 1-4.3-2.4l-1-1.6a2 2 0 0 0-2.5-.8L6 8.3V13h2V9.6z"/></symbol>
@@ -33,50 +32,35 @@
         <symbol id="i-qr" viewBox="0 0 24 24"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm2 2h2v2h-2zm-6 2h2v2h-2zm4 0h2v4h-4v-2h2zm-4 2h2v2h-2z"/></symbol>
         <symbol id="i-foto" viewBox="0 0 24 24"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></symbol>
         <symbol id="i-coracao" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.2 2.3 4 6.3 4c2.2 0 3.7 1.3 4.7 2.7h2C14 5.3 15.5 4 17.7 4c4 0 6 4.2 4.3 7.7C19.5 16.4 12 21 12 21z"/></symbol>
-        <!-- carinha do cachorro -->
-        <symbol id="i-cao" viewBox="0 0 120 120">
-          <ellipse cx="27" cy="52" rx="17" ry="30" transform="rotate(18 27 52)" fill="#8a5a3b"/>
-          <ellipse cx="93" cy="52" rx="17" ry="30" transform="rotate(-18 93 52)" fill="#8a5a3b"/>
-          <circle cx="60" cy="58" r="38" fill="#e8b07a"/>
-          <ellipse cx="60" cy="76" rx="22" ry="17" fill="#fbe3c6"/>
-          <ellipse cx="76" cy="44" rx="11" ry="10" fill="#c98a55"/>
-          <circle cx="45" cy="52" r="5.5" fill="#1d1b3a"/><circle cx="75" cy="52" r="5.5" fill="#1d1b3a"/>
-          <circle cx="47" cy="50" r="1.8" fill="#fff"/><circle cx="77" cy="50" r="1.8" fill="#fff"/>
-          <ellipse cx="60" cy="68" rx="8" ry="5.5" fill="#1d1b3a"/>
-          <path d="M60 73v5m-8 1c3 4 13 4 16 0" stroke="#1d1b3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-          <path d="M28 92c18 10 46 10 64 0l2 9c-20 11-48 11-68 0z" fill="#ff7a45"/>
-          <circle cx="60" cy="106" r="7" fill="#ffc94a" stroke="#e0a41f" stroke-width="2"/>
-        </symbol>
       </defs>
     </svg>
 
     <div class="app">
       <aside class="lateral" id="lateral" aria-label="Menu">
         <div class="marca">
-          <span class="logo"><svg><use href="#i-pata"/></svg></span>
-          <div>
-            <strong>Coleira inteligente</strong>
-            <small>Sinais vitais e zona segura</small>
-          </div>
+          <svg class="marca-icone" aria-hidden="true"><use href="#i-pata"/></svg>
+          <div><strong>Coleira</strong><small>Monitor do pet</small></div>
         </div>
         <div class="lateral-pet">
-          <svg class="lateral-avatar" viewBox="0 0 120 120"><use href="#i-cao"/></svg>
+          <span class="plaquinha pequena" aria-hidden="true"><span class="avatar" data-avatar></span></span>
           <div><b id="nomePetMenu">-</b><small id="estadoMenu">Aguardando</small></div>
         </div>
         <nav class="nav" id="nav">
-        <a href="#inicio" class="nav-item" data-secao="inicio"><svg><use href="#i-casa"/></svg><span>Início</span></a>
-        <a href="#mapa" class="nav-item" data-secao="mapa"><svg><use href="#i-mapa"/></svg><span>Mapa e área segura</span></a>
-        <a href="#saude" class="nav-item" data-secao="saude"><svg><use href="#i-coracao"/></svg><span>Saúde e atividade</span><i class="ponto-perdido" id="pontoSaude" hidden></i></a>
-        <a href="#alertas" class="nav-item" data-secao="alertas"><svg><use href="#i-sino"/></svg><span>Alertas</span><em class="selo" id="seloAlertas" hidden></em></a>
-        <a href="#perdido" class="nav-item" data-secao="perdido"><svg><use href="#i-megafone"/></svg><span>Pet perdido e QR</span><i class="ponto-perdido" id="pontoPerdido" hidden></i></a>
-        <a href="#comunidade" class="nav-item" data-secao="comunidade"><svg><use href="#i-vizinhos"/></svg><span>Rede do bairro</span><em class="selo" id="seloBairro" hidden></em></a>
-        <a href="#testes" class="nav-item" data-secao="testes"><svg><use href="#i-pata"/></svg><span>Área de testes</span></a>
+          <a href="#inicio" class="nav-item" data-secao="inicio"><svg class="nav-icone" aria-hidden="true"><use href="#i-casa"/></svg><span>Início</span></a>
+          <a href="#mapa" class="nav-item" data-secao="mapa"><svg class="nav-icone" aria-hidden="true"><use href="#i-mapa"/></svg><span>Mapa e área segura</span></a>
+          <a href="#saude" class="nav-item" data-secao="saude"><svg class="nav-icone" aria-hidden="true"><use href="#i-coracao"/></svg><span>Saúde e atividade</span><i class="ponto-perdido" id="pontoSaude" hidden></i></a>
+          <a href="#alertas" class="nav-item" data-secao="alertas"><svg class="nav-icone" aria-hidden="true"><use href="#i-sino"/></svg><span>Alertas</span><em class="selo" id="seloAlertas" hidden></em></a>
+          <a href="#perdido" class="nav-item" data-secao="perdido"><svg class="nav-icone" aria-hidden="true"><use href="#i-megafone"/></svg><span>Pet perdido e QR</span><i class="ponto-perdido" id="pontoPerdido" hidden></i></a>
+          <a href="#comunidade" class="nav-item" data-secao="comunidade"><svg class="nav-icone" aria-hidden="true"><use href="#i-vizinhos"/></svg><span>Rede do bairro</span><em class="selo" id="seloBairro" hidden></em></a>
+          <a href="#testes" class="nav-item" data-secao="testes"><svg class="nav-icone" aria-hidden="true"><use href="#i-ferramenta"/></svg><span>Área de testes</span></a>
         </nav>
-        <div class="conta-lateral" id="contaLateral" hidden>
-          <span id="contaEmail"></span>
-          <button type="button" id="btnSair">Sair</button>
+        <div class="lateral-rodape">
+          <div class="conta-lateral" id="contaLateral" hidden>
+            <span id="contaEmail"></span>
+            <button type="button" id="btnSair">Sair</button>
+          </div>
+          <span class="conexao" data-conexao><i></i><span data-conexao-texto>Conectando...</span></span>
         </div>
-        <span class="conexao" data-conexao><i></i><span data-conexao-texto>Conectando...</span></span>
       </aside>
       <div class="fundo-menu" id="fundoMenu" hidden></div>
 
@@ -89,117 +73,98 @@
           <span class="conexao compacta" data-conexao><i></i><span data-conexao-texto>Conectando...</span></span>
         </header>
 
-    <div class="banner" id="banner" hidden role="alert">
-      <span class="banner-icone"><svg><use id="bannerIcone" href="#i-corre"/></svg></span>
-      <div class="banner-texto">
-        <strong id="bannerTitulo">Alerta</strong>
-        <span id="bannerTexto"></span>
-      </div>
-      <div class="banner-acoes">
-        <a id="bannerMapa" href="#" target="_blank" rel="noopener"><svg><use href="#i-mapa"/></svg>Abrir no Google Maps</a>
-        <a id="bannerZap" href="#" target="_blank" rel="noopener"><svg><use href="#i-zap"/></svg><span id="bannerZapTexto">Enviar no WhatsApp</span></a>
-        <button type="button" id="btnPerdidoBanner" class="banner-perdido" hidden><svg><use href="#i-megafone"/></svg>Ativar modo perdido</button>
-        <button type="button" id="btnEncontradoBanner" class="banner-encontrado" hidden><svg><use href="#i-check"/></svg>Pet encontrado</button>
-        <button type="button" id="btnEntendi" class="banner-entendi" hidden>Entendi</button>
-      </div>
-    </div>
+        <div class="banner" id="banner" hidden role="alert">
+          <svg class="banner-icone" aria-hidden="true"><use id="bannerIcone" href="#i-corre"/></svg>
+          <div class="banner-texto">
+            <strong id="bannerTitulo">Alerta</strong>
+            <span id="bannerTexto"></span>
+          </div>
+          <div class="banner-acoes">
+            <a id="bannerMapa" class="botao" href="#" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-mapa"/></svg>Abrir no Google Maps</a>
+            <a id="bannerZap" class="botao" href="#" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-zap"/></svg><span id="bannerZapTexto">Enviar no WhatsApp</span></a>
+            <button type="button" id="btnPerdidoBanner" class="botao" hidden><svg aria-hidden="true"><use href="#i-megafone"/></svg>Ativar modo perdido</button>
+            <button type="button" id="btnEncontradoBanner" class="botao forte" hidden><svg aria-hidden="true"><use href="#i-check"/></svg>Marcar como encontrado</button>
+            <button type="button" id="btnEntendi" class="botao discreto" hidden>Ocultar aviso</button>
+          </div>
+        </div>
 
         <main>
           <!-- ===================== INÍCIO ===================== -->
           <section class="secao" id="sec-inicio" data-titulo="Início" tabindex="-1">
-      <!-- status principal -->
-      <section class="heroi" aria-live="polite">
-        <div class="avatar">
-          <span class="onda"></span><span class="onda o2"></span>
-          <svg class="cao" viewBox="0 0 120 120"><use href="#i-cao"/></svg>
-        </div>
-        <div class="heroi-texto">
-          <span class="etiqueta" id="etiquetaEstado">Aguardando</span>
-          <h1 id="nomePet">-</h1>
-          <p id="status">Aguardando localização...</p>
-          <div class="heroi-acoes">
-            <a href="#mapa" class="heroi-botao"><svg><use href="#i-mapa"/></svg><span>Ver no mapa</span></a>
-            <button type="button" id="btnPerdido" class="heroi-botao"><svg><use href="#i-megafone"/></svg><span>Meu pet sumiu</span></button>
-          </div>
-        </div>
-        <div class="distancia">
-          <span class="valor" id="distancia">-</span>
-          <small id="distanciaLegenda">da casa</small>
-          <div class="regua"><b id="reguaPreench"></b><i id="reguaLimite"></i></div>
-        </div>
-        <svg class="patas-deco" viewBox="0 0 200 120" aria-hidden="true">
-          <use href="#i-pata" x="10" y="70" width="22" height="22" transform="rotate(-20 21 81)"/>
-          <use href="#i-pata" x="50" y="48" width="22" height="22" transform="rotate(-10 61 59)"/>
-          <use href="#i-pata" x="92" y="62" width="22" height="22" transform="rotate(-25 103 73)"/>
-          <use href="#i-pata" x="132" y="34" width="22" height="22" transform="rotate(-12 143 45)"/>
-          <use href="#i-pata" x="170" y="46" width="22" height="22" transform="rotate(-28 181 57)"/>
-        </svg>
-      </section>
+            <section class="estado" aria-live="polite">
+              <div class="estado-pet">
+                <span class="plaquinha" aria-hidden="true"><span class="avatar" data-avatar></span></span>
+                <div>
+                  <h1 id="nomePet">-</h1>
+                  <span class="etiqueta" id="etiquetaEstado">Aguardando</span>
+                </div>
+              </div>
+              <p class="estado-texto" id="status">Aguardando localização...</p>
+              <div class="estado-dist">
+                <span class="valor" id="distancia">-</span>
+                <small id="distanciaLegenda">da casa</small>
+                <div class="regua" aria-hidden="true"><b id="reguaPreench"></b><i id="reguaLimite"></i></div>
+              </div>
+              <div class="estado-acoes">
+                <a href="#mapa" class="botao"><svg aria-hidden="true"><use href="#i-mapa"/></svg>Ver no mapa</a>
+                <button type="button" id="btnPerdido" class="botao"><svg aria-hidden="true"><use href="#i-megafone"/></svg><span>Ativar modo perdido</span></button>
+              </div>
+            </section>
 
-      <!-- avisos de quem encontrou o pet pelo QR -->
-      <section class="cartao encontros-cartao" id="encontrosInicio" hidden>
-        <h2><svg><use href="#i-olho"/></svg>Alguém encontrou seu pet</h2>
-        <div class="lista-encontros" id="listaEncontrosInicio"></div>
-      </section>
+            <section class="bloco encontros-cartao destaque-azul" id="encontrosInicio" hidden>
+              <h2>Alguém encontrou seu pet</h2>
+              <div class="lista-encontros" id="listaEncontrosInicio"></div>
+            </section>
 
-      <!-- sinais vitais e coleira -->
-      <aside class="sinais">
-        <div class="cartao sinal bpm" id="cartaoBpm">
-          <div class="sinal-topo">
-            <span class="sinal-nome">Batimentos</span>
-            <svg class="coracao" id="coracao" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.2 2.3 4 6.3 4c2.2 0 3.7 1.3 4.7 2.7h2C14 5.3 15.5 4 17.7 4c4 0 6 4.2 4.3 7.7C19.5 16.4 12 21 12 21z"/></svg>
-          </div>
-          <div class="sinal-valor"><span id="batimentos">-</span><small id="bpmUnidade">bpm</small></div>
-          <canvas id="graficoBpm" height="44" aria-label="Batimentos recentes"></canvas>
-          <a href="#saude" class="sinal-sub" id="bpmNormal">Aprendendo o normal dele</a>
-        </div>
+            <div class="inicio-grade">
+            <a href="#mapa" class="bloco minimapa" aria-label="Abrir o mapa completo">
+              <div id="mapaMini"></div>
+              <span class="minimapa-legenda"><i class="lg-casa"></i>área segura <i class="lg-pet"></i>pet <i class="lg-patas"></i>rastro recente</span>
+            </a>
+            <section class="bloco sinais" aria-label="Sinais da coleira">
+              <div class="sinal" id="cartaoBpm">
+                <h3 class="sinal-nome"><svg class="sinal-icone coracao" aria-hidden="true"><use href="#i-coracao"/></svg>Batimentos</h3>
+                <p class="sinal-valor"><span id="batimentos">-</span> <small id="bpmUnidade">bpm</small></p>
+                <canvas id="graficoBpm" height="44" aria-label="Batimentos recentes"></canvas>
+                <a href="#saude" class="sinal-sub" id="bpmNormal">Aprendendo o normal dele</a>
+              </div>
+              <div class="sinal" id="cartaoColeira">
+                <h3 class="sinal-nome"><svg class="sinal-icone" aria-hidden="true"><use href="#i-tag"/></svg>Coleira</h3>
+                <p class="sinal-linha"><svg class="marca-tag" aria-hidden="true"><use id="iconeColeira" href="#i-check"/></svg><span class="sinal-valor pequeno" id="coleira">-</span></p>
+                <p class="sinal-sub">Sensor de presença no fecho</p>
+              </div>
+              <div class="sinal">
+                <h3 class="sinal-nome"><svg class="sinal-icone" aria-hidden="true"><use href="#i-osso"/></svg>Bateria</h3>
+                <p class="sinal-linha"><svg class="osso" viewBox="0 0 120 40" aria-hidden="true">
+                  <defs>
+                    <clipPath id="formaOsso">
+                      <circle cx="13" cy="12" r="10"/><circle cx="13" cy="28" r="10"/>
+                      <circle cx="107" cy="12" r="10"/><circle cx="107" cy="28" r="10"/>
+                      <rect x="12" y="10" width="96" height="20" rx="4"/>
+                    </clipPath>
+                  </defs>
+                  <g clip-path="url(#formaOsso)">
+                    <rect width="120" height="40" class="osso-fundo"/>
+                    <rect id="ossoPreench" width="0" height="40"/>
+                  </g>
+                </svg><span class="sinal-valor pequeno"><span id="bateria">-</span></span></p>
+              </div>
+              <div class="sinal">
+                <h3 class="sinal-nome"><svg class="sinal-icone" aria-hidden="true"><use href="#i-mapa"/></svg>GPS <span class="barras" id="barrasGps" aria-hidden="true"><i></i><i></i><i></i><i></i></span></h3>
+                <p class="sinal-valor pequeno" id="gps">-</p>
+                <dl class="coords">
+                  <div><dt>Latitude</dt><dd id="latitude">-</dd></div>
+                  <div><dt>Longitude</dt><dd id="longitude">-</dd></div>
+                  <div><dt>Sincronizado</dt><dd id="atualizado">-</dd></div>
+                </dl>
+              </div>
+            </section>
+            </div>
 
-        <div class="cartao sinal coleira" id="cartaoColeira">
-          <span class="sinal-nome">Coleira</span>
-          <div class="plaquinha" id="plaquinha">
-            <svg class="tag"><use href="#i-tag"/></svg>
-            <svg class="marca-tag"><use id="iconeColeira" href="#i-check"/></svg>
-          </div>
-          <div class="sinal-valor pequeno" id="coleira">-</div>
-        </div>
-
-        <div class="cartao sinal bateria">
-          <span class="sinal-nome">Bateria</span>
-          <svg class="osso" viewBox="0 0 120 40" aria-hidden="true">
-            <defs>
-              <clipPath id="formaOsso">
-                <circle cx="13" cy="12" r="10"/><circle cx="13" cy="28" r="10"/>
-                <circle cx="107" cy="12" r="10"/><circle cx="107" cy="28" r="10"/>
-                <rect x="12" y="10" width="96" height="20" rx="4"/>
-              </clipPath>
-            </defs>
-            <g clip-path="url(#formaOsso)">
-              <rect width="120" height="40" class="osso-fundo"/>
-              <rect id="ossoPreench" width="0" height="40" class="osso-preench"/>
-            </g>
-          </svg>
-          <div class="sinal-valor pequeno"><span id="bateria">-</span></div>
-        </div>
-
-        <div class="cartao sinal gps">
-          <div class="sinal-topo">
-            <span class="sinal-nome">GPS</span>
-            <span class="barras" id="barrasGps"><i></i><i></i><i></i><i></i></span>
-          </div>
-          <div class="sinal-valor pequeno" id="gps">-</div>
-          <dl class="coords">
-            <div><dt>Lat</dt><dd id="latitude">-</dd></div>
-            <div><dt>Lng</dt><dd id="longitude">-</dd></div>
-            <div><dt>Atualizado</dt><dd id="atualizado">-</dd></div>
-          </dl>
-        </div>
-      </aside>
-
-
-            <section class="cartao resumo-alertas">
+            <section class="bloco resumo-alertas">
               <div class="titulo-linha">
-                <h2><svg><use href="#i-sino"/></svg>Últimos alertas</h2>
-                <a href="#alertas" class="pilula leve">Ver todos</a>
+                <h2>Últimos alertas</h2>
+                <a href="#alertas" class="link">Ver todos os alertas</a>
               </div>
               <ul class="alertas curta" id="alertasResumo"></ul>
             </section>
@@ -207,53 +172,44 @@
 
           <!-- ===================== MAPA ===================== -->
           <section class="secao" id="sec-mapa" data-titulo="Mapa e área segura" tabindex="-1" hidden>
-        <header class="secao-topo">
-          <h2 class="secao-titulo">Mapa e área segura</h2>
-          <p>Veja onde o pet está, o rastro das patinhas e ajuste a área em que ele pode ficar sem gerar alerta.</p>
-        </header>
-
-      <!-- mapa e área segura -->
-      <section class="cartao mapa-cartao">
-        <div class="mapa-envolve">
-          <div id="map"></div>
-          <div class="dica-mapa" id="dicaMapa" hidden>
-            <svg><use href="#i-casa"/></svg> Clique no mapa ou arraste a casinha até o lugar certo
-          </div>
-        </div>
-        <div class="area">
-          <button id="btnMoverCasa" type="button" class="pilula"><svg><use href="#i-casa"/></svg><span>Mover casa</span></button>
-          <div class="raio">
-            <label for="raio">Raio da área segura <b id="raioValor">50 m</b></label>
-            <input type="range" id="raio" min="10" max="500" step="5" value="50" />
-          </div>
-          <div class="area-acoes">
-            <button id="btnDesfazer" type="button" class="pilula leve" disabled title="Desfazer (Ctrl+Z)">
-              <svg><use href="#i-desfazer"/></svg><span>Desfazer</span><em id="contDesfazer" hidden></em>
-            </button>
-            <button id="btnCancelar" type="button" class="pilula leve" disabled>Cancelar</button>
-            <button id="btnSalvarArea" type="button" class="pilula primario" disabled><svg><use href="#i-check"/></svg>Salvar área</button>
-          </div>
-        </div>
-        <p class="dica" id="dicaArea">A área azul é onde o pet pode ficar sem gerar alerta.</p>
-      </section>
-
-
+            <header class="secao-topo">
+              <h2 class="secao-titulo">Mapa e área segura</h2>
+              <p>Onde o pet está, o rastro recente e a área em que ele pode ficar sem gerar alerta.</p>
+            </header>
+            <section class="bloco mapa-cartao">
+              <div class="mapa-envolve">
+                <div id="map"></div>
+                <div class="dica-mapa" id="dicaMapa" hidden>Clique no mapa ou arraste o marcador da casa até o lugar certo.</div>
+              </div>
+              <div class="area">
+                <button id="btnMoverCasa" type="button" class="botao"><span>Mover a casa</span></button>
+                <div class="raio">
+                  <label for="raio">Raio da área segura <b id="raioValor">50 m</b></label>
+                  <input type="range" id="raio" min="10" max="500" step="5" value="50" />
+                </div>
+                <div class="area-acoes">
+                  <button id="btnDesfazer" type="button" class="botao" disabled title="Desfazer (Ctrl+Z)"><span>Desfazer</span><em id="contDesfazer" hidden></em></button>
+                  <button id="btnCancelar" type="button" class="botao" disabled>Descartar mudanças</button>
+                  <button id="btnSalvarArea" type="button" class="botao primario" disabled>Salvar área segura</button>
+                </div>
+              </div>
+              <p class="dica" id="dicaArea">O círculo verde é a área em que o pet pode ficar sem gerar alerta.</p>
+            </section>
           </section>
 
           <!-- ===================== SAÚDE ===================== -->
           <section class="secao" id="sec-saude" data-titulo="Saúde e atividade" tabindex="-1" hidden>
             <header class="secao-topo">
               <h2 class="secao-titulo">Saúde e atividade</h2>
-              <p>A coleira aprende como é o batimento em repouso <b>deste</b> pet e avisa quando ele foge do normal dele. O GPS mostra quanto ele se mexeu.</p>
+              <p>O batimento comparado com o normal deste pet, e quanto ele se mexeu.</p>
             </header>
-
             <div class="saude-topo">
-              <section class="cartao saude-bpm" id="cartaoSaudeBpm">
-                <div class="sinal-topo">
-                  <span class="sinal-nome">Batimento em repouso</span>
+              <section class="bloco saude-bpm" id="cartaoSaudeBpm">
+                <div class="titulo-linha">
+                  <h2>Batimento em repouso</h2>
                   <span class="chip" id="sChip">Aprendendo</span>
                 </div>
-                <div class="saude-valor"><span id="sRepouso">--</span><small id="sRepousoRotulo">bpm agora</small></div>
+                <p class="saude-valor"><span id="sRepouso">--</span> <small id="sRepousoRotulo">bpm agora</small></p>
                 <div class="faixa" aria-hidden="true">
                   <div class="faixa-normal" id="sFaixaNormal"></div>
                   <i class="faixa-marca" id="sFaixaMarca" hidden></i>
@@ -261,164 +217,147 @@
                 <div class="faixa-legenda"><span id="sFaixaMin"></span><span id="sFaixaTexto">normal ainda em aprendizado</span><span id="sFaixaMax"></span></div>
                 <p class="dica" id="sBase"></p>
               </section>
-
-              <section class="cartao saude-ativ">
-                <span class="sinal-nome">Atividade de hoje</span>
+              <section class="bloco saude-ativ">
+                <h2>Atividade de hoje</h2>
                 <div class="ativ-linha">
-                  <svg class="anel" viewBox="0 0 120 120" aria-hidden="true">
-                    <circle cx="60" cy="60" r="50" class="anel-fundo"/>
-                    <circle cx="60" cy="60" r="50" class="anel-valor" id="sAnel" pathLength="100" stroke-dasharray="0 100"/>
-                  </svg>
-                  <div class="anel-centro"><b id="sMinHoje">0</b><small>min ativos</small></div>
+                  <div class="anel-envolve">
+                    <svg class="anel" viewBox="0 0 120 120" aria-hidden="true">
+                      <circle cx="60" cy="60" r="50" class="anel-fundo"/>
+                      <circle cx="60" cy="60" r="50" class="anel-valor" id="sAnel" pathLength="100" stroke-dasharray="0 100"/>
+                    </svg>
+                    <div class="anel-centro"><b id="sMinHoje">0</b><small>min ativos</small></div>
+                  </div>
                   <dl class="ativ-dados">
                     <div><dt>Distância hoje</dt><dd id="sDistHoje">0 m</dd></div>
                     <div><dt>Normal num dia</dt><dd id="sNormalAtiv">-</dd></div>
-                    <div><dt>Do normal</dt><dd id="sPctHoje">-</dd></div>
+                    <div><dt>Em relação ao normal</dt><dd id="sPctHoje">-</dd></div>
                   </dl>
                 </div>
               </section>
             </div>
-
-            <section class="cartao">
-              <h2><svg><use href="#i-pata"/></svg>O que a coleira percebeu</h2>
+            <section class="bloco">
+              <h2>O que a coleira percebeu</h2>
               <ul class="percebidos" id="sInsights"></ul>
             </section>
-
             <div class="saude-graficos">
-              <section class="cartao">
-                <h2><svg><use href="#i-coracao"/></svg>Batimento em repouso · 14 dias</h2>
+              <section class="bloco">
+                <h2>Batimento em repouso nos últimos 14 dias</h2>
                 <div class="fig-g" id="gRepouso"><svg role="img" aria-label="Batimento em repouso por dia"></svg></div>
                 <p class="legenda"><i class="lg-faixa"></i>faixa normal dele <i class="lg-ponto"></i>média do dia em repouso <i class="lg-fora"></i>fora do normal</p>
               </section>
-              <section class="cartao">
-                <h2><svg><use href="#i-corre"/></svg>Tempo ativo por dia</h2>
+              <section class="bloco">
+                <h2>Tempo ativo por dia</h2>
                 <div class="fig-g" id="gAtividade"><svg role="img" aria-label="Minutos ativos por dia"></svg></div>
                 <p class="legenda"><i class="lg-barra"></i>minutos ativos <i class="lg-parado"></i>dia bem mais parado <i class="lg-hoje"></i>hoje, até agora</p>
               </section>
             </div>
-
-            <p class="nota-saude">Isto é acompanhamento de tendência, não diagnóstico. O sensor é óptico e o pelo atrapalha a leitura. Se notar mudança de comportamento, fale com o veterinário e leve este histórico.</p>
+            <p class="nota-saude">Não é diagnóstico: o sensor é óptico e o pelo atrapalha a leitura. Se notar mudança de comportamento, leve este histórico ao veterinário.</p>
           </section>
 
           <!-- ===================== ALERTAS ===================== -->
           <section class="secao" id="sec-alertas" data-titulo="Alertas" tabindex="-1" hidden>
-        <header class="secao-topo">
-          <h2 class="secao-titulo">Alertas</h2>
-          <p>Tudo o que a coleira e quem encontrou o pet avisaram, do mais recente para o mais antigo.</p>
-        </header>
-
-      <!-- alertas -->
-      <section class="cartao alertas-cartao">
-        <div class="titulo-linha">
-          <h2><svg><use href="#i-sino"/></svg>Histórico</h2>
-          <button id="btnNotificar" type="button" class="pilula leve">Ativar notificações</button>
-        </div>
-        <ul class="alertas" id="alertas"></ul>
-      </section>
-
-
+            <header class="secao-topo">
+              <h2 class="secao-titulo">Alertas</h2>
+              <p>Avisos da coleira e de quem encontrou o pet, do mais recente ao mais antigo.</p>
+            </header>
+            <section class="bloco alertas-cartao">
+              <div class="titulo-linha">
+                <h2>Histórico</h2>
+                <button id="btnNotificar" type="button" class="botao">Ativar notificações</button>
+              </div>
+              <ul class="alertas" id="alertas"></ul>
+            </section>
           </section>
 
           <!-- ===================== PET PERDIDO ===================== -->
           <section class="secao" id="sec-perdido" data-titulo="Pet perdido e QR" tabindex="-1" hidden>
-        <header class="secao-topo">
-          <h2 class="secao-titulo">Pet perdido e QR</h2>
-          <p>Prepare o perfil que aparece para quem escanear a coleira e ative o modo perdido se o pet sumir.</p>
-        </header>
-
+            <header class="secao-topo">
+              <h2 class="secao-titulo">Pet perdido e QR</h2>
+              <p>O que aparece para quem escanear a coleira, e o que fazer quando o pet sumir.</p>
+            </header>
             <div class="perdido-grade">
-              <section class="cartao modo-perdido-cartao">
-                <span class="mp-icone"><svg><use href="#i-megafone"/></svg></span>
+              <section class="bloco modo-perdido-cartao">
                 <h2 id="mpTitulo">Modo pet perdido desligado</h2>
-                <p class="dica" id="mpTexto">Se o pet sumir, ative para a coleira piscar o LED sem parar e a página do QR pedir ajuda a quem encontrá-lo.</p>
-                <button type="button" class="pilula perigo grande" id="btnPerdido2"><svg><use href="#i-megafone"/></svg><span>Meu pet sumiu</span></button>
+                <p class="dica" id="mpTexto">Se o pet sumir: o LED da coleira pisca sem parar e a página do QR pede ajuda a quem encontrar.</p>
+                <button type="button" class="botao perigo grande" id="btnPerdido2"><svg aria-hidden="true"><use href="#i-megafone"/></svg><span>Ativar modo perdido</span></button>
               </section>
-      <!-- perfil, QR e modo perdido -->
-      <section class="cartao perfil-cartao">
-        <h2><svg><use href="#i-qr"/></svg>Perfil e QR da coleira</h2>
-        <p class="dica">Quem escanear o QR vê estes dados e pode enviar a localização do pet para você.</p>
-        <form class="perfil-form" id="formPerfil" novalidate>
-          <div class="perfil-foto">
-            <label class="foto-escolher" for="perfilFoto" title="Trocar foto">
-              <img id="perfilFotoPrev" alt="" hidden />
-              <svg class="foto-padrao" viewBox="0 0 120 120"><use href="#i-cao"/></svg>
-              <span class="foto-icone"><svg><use href="#i-foto"/></svg></span>
-            </label>
-            <input type="file" id="perfilFoto" accept="image/*" class="oculto" />
-            <label class="campo">Nome <input id="perfilNome" maxlength="40" /></label>
-          </div>
-          <label class="campo">WhatsApp do tutor <input id="perfilTel" type="tel" inputmode="tel" placeholder="(71) 99999-9999" maxlength="20" /></label>
-          <label class="campo">Recado para quem encontrar
-            <textarea id="perfilRecado" rows="3" maxlength="300" placeholder="Ex.: É dócil, mas tem medo de motos. Toma remédio para o coração."></textarea>
-          </label>
-          <div class="perfil-acoes">
-            <button type="submit" class="pilula primario" id="btnSalvarPerfil"><svg><use href="#i-check"/></svg>Salvar perfil</button>
-            <span class="dica" id="dicaPerfil"></span>
-          </div>
-        </form>
-        <div class="qr-bloco">
-          <canvas id="qrCanvas" width="148" height="148" aria-label="QR code da página do pet"></canvas>
-          <div>
-            <p class="dica" id="qrDica">Imprima com 22 × 22 mm e cole no rebaixo da tampa da coleira.</p>
-            <div class="qr-botoes">
-              <a id="qrBaixar" class="pilula leve" download="qr-coleira.png" href="#">Baixar QR</a>
-              <a id="qrAbrir" class="pilula leve" href="perdido.html" target="_blank" rel="noopener">Abrir página</a>
+              <section class="bloco perfil-cartao">
+                <h2>Perfil e QR da coleira</h2>
+                <p class="dica">Quem escanear o QR vê estes dados e pode enviar a localização do pet.</p>
+                <form class="perfil-form" id="formPerfil" novalidate>
+                  <div class="perfil-foto">
+                    <label class="foto-escolher" for="perfilFoto" title="Trocar foto">
+                      <img id="perfilFotoPrev" alt="" hidden />
+                      <span class="foto-padrao">Adicionar foto</span>
+                    </label>
+                    <input type="file" id="perfilFoto" accept="image/*" class="oculto" />
+                    <label class="campo">Nome <input id="perfilNome" maxlength="40" /></label>
+                  </div>
+                  <label class="campo">WhatsApp do tutor <input id="perfilTel" type="tel" inputmode="tel" placeholder="(71) 99999-9999" maxlength="20" /></label>
+                  <label class="campo">Recado para quem encontrar
+                    <textarea id="perfilRecado" rows="3" maxlength="300" placeholder="Ex.: É dócil, mas tem medo de motos. Toma remédio para o coração."></textarea>
+                  </label>
+                  <div class="perfil-acoes">
+                    <button type="submit" class="botao primario" id="btnSalvarPerfil">Salvar perfil</button>
+                    <span class="dica" id="dicaPerfil"></span>
+                  </div>
+                </form>
+                <div class="qr-bloco">
+                  <canvas id="qrCanvas" width="148" height="148" aria-label="QR code da página do pet"></canvas>
+                  <div>
+                    <p class="dica" id="qrDica">Imprima com 22 × 22 mm e cole no rebaixo da tampa da coleira.</p>
+                    <div class="qr-botoes">
+                      <a id="qrBaixar" class="botao" download="qr-coleira.png" href="#">Baixar QR code</a>
+                      <a id="qrAbrir" class="botao" href="perdido.html" target="_blank" rel="noopener">Abrir página do QR</a>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
-          </div>
-        </div>
-      </section>
-            </div>
-
-      <section class="cartao encontros-cartao">
-        <h2><svg><use href="#i-olho"/></svg>Encontros pelo QR</h2>
-        <p class="dica">Quando alguém escaneia a coleira e avisa, o ponto exato aparece no mapa e você conversa com a pessoa por aqui.</p>
-        <div class="lista-encontros" id="listaEncontros"></div>
-      </section>
+            <section class="bloco encontros-cartao">
+              <h2>Encontros pelo QR</h2>
+              <p class="dica">Quem escaneia a coleira e avisa aparece aqui, com o ponto exato no mapa e uma conversa.</p>
+              <div class="lista-encontros" id="listaEncontros"></div>
+            </section>
           </section>
 
           <!-- ===================== REDE DO BAIRRO ===================== -->
           <section class="secao" id="sec-comunidade" data-titulo="Rede do bairro" tabindex="-1" hidden>
-        <header class="secao-topo">
-          <h2 class="secao-titulo">Rede de alerta do bairro</h2>
-          <p>Vizinhos que ajudam a trazer pets de volta para casa. Ninguém vê onde você mora.</p>
-        </header>
+            <header class="secao-topo">
+              <h2 class="secao-titulo">Rede de alerta do bairro</h2>
+              <p>Vizinhos que ajudam a trazer pets de volta para casa. Ninguém vê onde você mora.</p>
+            </header>
             <div id="comunidade"><p class="dica">Carregando a rede do bairro...</p></div>
           </section>
 
           <!-- ===================== TESTES ===================== -->
           <section class="secao" id="sec-testes" data-titulo="Área de testes" tabindex="-1" hidden>
-        <header class="secao-topo">
-          <h2 class="secao-titulo">Área de testes</h2>
-          <p>Simule a coleira para testar o site e apresentar o projeto sem o hardware.</p>
-        </header>
-
-      <!-- simulação -->
-      <section class="cartao simulacao" id="painelSimulacao">
-        <h2><svg><use href="#i-pata"/></svg>O que você quer simular?</h2>
-        <p class="dica">Os botões fazem o papel da coleira. Com o Firebase configurado, eles gravam no banco como se fossem o hardware.</p>
-        <div class="botoes">
-          <button type="button" data-sim="dentro" class="brinquedo b-menta"><svg><use href="#i-casa"/></svg>Pet em casa</button>
-          <button type="button" data-sim="fora" class="brinquedo b-coral"><svg><use href="#i-corre"/></svg>Pet fora da área</button>
-          <button type="button" data-sim="coleira" class="brinquedo b-amarelo"><svg><use href="#i-tag"/></svg>Tirar / pôr coleira</button>
-          <button type="button" data-sim="passeio" id="btnPasseio" class="brinquedo b-roxo"><svg><use href="#i-pata"/></svg><span>Iniciar fuga simulada</span></button>
-          <button type="button" data-sim="achado" class="brinquedo b-azul"><svg><use href="#i-olho"/></svg>Alguém encontrou o pet</button>
-          <button type="button" data-sim="coracao" class="brinquedo b-rosa"><svg><use href="#i-coracao"/></svg>Batimento fora do normal</button>
-          <button type="button" data-sim="historico" class="brinquedo b-verde"><svg><use href="#i-check"/></svg>Gerar 14 dias de histórico</button>
-          <button type="button" data-sim="vizinhos" class="brinquedo b-roxo"><svg><use href="#i-vizinhos"/></svg>Vizinhos ajudando na busca</button>
-        </div>
-      </section>
-
-      <!-- vincular a coleira (só com Firebase) -->
-      <section class="cartao vincular" id="cartaoVincular" hidden>
-        <h2><svg><use href="#i-cadeado"/></svg>Vincular a coleira</h2>
-        <p class="dica">Só a coleira vinculada consegue gravar os dados de <span data-nome-pet>Rex</span>. Grave o firmware, abra o Monitor Serial (115200) e copie o <b>UID DA COLEIRA</b>.</p>
-        <form class="vincular-form" id="formVincular">
-          <label class="campo">UID da coleira <input id="uidColeira" maxlength="128" autocomplete="off" spellcheck="false" placeholder="Ex.: Xy12ab34Cd56ef78Gh90ij12Kl34"></label>
-          <button class="pilula primario" type="submit">Vincular</button>
-        </form>
-        <p class="qr-status" id="statusVincular" role="status"></p>
-      </section>
-
+            <header class="secao-topo">
+              <h2 class="secao-titulo">Área de testes</h2>
+              <p>Simule a coleira para apresentar o projeto sem o hardware. Com o Firebase configurado, os botões gravam no banco como se fossem a coleira.</p>
+            </header>
+            <section class="bloco simulacao" id="painelSimulacao">
+              <h2>Simular</h2>
+              <div class="botoes">
+                <button type="button" data-sim="dentro" class="botao">Pôr o pet em casa</button>
+                <button type="button" data-sim="fora" class="botao">Levar o pet para fora da área</button>
+                <button type="button" data-sim="coleira" class="botao">Tirar ou pôr a coleira</button>
+                <button type="button" data-sim="passeio" id="btnPasseio" class="botao"><span>Iniciar fuga simulada</span></button>
+                <button type="button" data-sim="achado" class="botao">Simular aviso pelo QR</button>
+                <button type="button" data-sim="coracao" class="botao">Simular batimento alto</button>
+                <button type="button" data-sim="historico" class="botao">Gerar 14 dias de histórico</button>
+                <button type="button" data-sim="vizinhos" class="botao">Simular vizinhos na busca</button>
+              </div>
+            </section>
+            <section class="bloco vincular" id="cartaoVincular" hidden>
+              <h2>Vincular a coleira</h2>
+              <p class="dica">Só a coleira vinculada consegue gravar os dados de <span data-nome-pet>Rex</span>. Grave o firmware, abra o Monitor Serial (115200) e copie a linha "UID DA COLEIRA".</p>
+              <form class="vincular-form" id="formVincular">
+                <label class="campo">UID da coleira <input id="uidColeira" maxlength="128" autocomplete="off" spellcheck="false" placeholder="Ex.: Xy12ab34Cd56ef78Gh90ij12Kl34"></label>
+                <button class="botao primario" type="submit">Vincular coleira</button>
+              </form>
+              <p class="qr-status" id="statusVincular" role="status"></p>
+            </section>
           </section>
         </main>
       </div>
@@ -426,17 +365,16 @@
 
     <dialog class="dialogo" id="dlgPerdido" aria-labelledby="dlgTitulo">
       <form method="dialog">
-        <span class="dialogo-icone"><svg><use href="#i-megafone"/></svg></span>
         <h2 id="dlgTitulo">Ativar o modo pet perdido?</h2>
         <ul>
-          <li>A página do QR mostra "Estou perdido!" e pede ajuda a quem encontrar o pet.</li>
+          <li>A página do QR passa a mostrar que o pet está perdido e pede ajuda a quem encontrar.</li>
           <li>Quem escanear envia a localização exata do celular, como o pet está e uma foto. O ponto aparece no seu mapa.</li>
           <li>Você conversa com a pessoa por aqui, pelo WhatsApp ou por ligação.</li>
-          <li>O LED da coleira já pisca sozinho quando o pet sai da área segura, para chamar a atenção de quem estiver por perto.</li>
+          <li>O LED da coleira já pisca sozinho quando o pet sai da área segura.</li>
         </ul>
         <div class="dialogo-acoes">
-          <button value="cancelar" class="pilula leve">Cancelar</button>
-          <button value="ativar" class="pilula perigo" id="btnConfirmarPerdido">Ativar modo perdido</button>
+          <button value="cancelar" class="botao">Voltar</button>
+          <button value="ativar" class="botao perigo" id="btnConfirmarPerdido">Ativar modo perdido</button>
         </div>
       </form>
     </dialog>

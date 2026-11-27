@@ -48,13 +48,13 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const circuloArea = L.circle([area.lat, area.lng], {
-  color: '#4747a8', weight: 3, dashArray: '8 8', fillColor: '#4747a8', fillOpacity: 0.12, radius: area.raio
+  color: '#2e7d57', weight: 2, dashArray: '6 6', fillColor: '#2e7d57', fillOpacity: 0.1, radius: area.raio
 }).addTo(map);
 
 const iconeCasa = (editando) => L.divIcon({
   className: '',
   html: `<div class="mk-casa ${editando ? 'editando' : ''}"><svg><use href="#i-casa"/></svg></div>`,
-  iconSize: [46, 46], iconAnchor: [23, 46], popupAnchor: [0, -44]
+  iconSize: [28, 28], iconAnchor: [14, 14], popupAnchor: [0, -14]
 });
 const marcadorCasa = L.marker([area.lat, area.lng], { icon: iconeCasa(false), draggable: true, keyboard: false })
   .addTo(map).bindPopup('<b>Casa</b>');
@@ -62,17 +62,47 @@ marcadorCasa.dragging.disable();
 
 const iconePet = (fora) => L.divIcon({
   className: '',
-  html: `<div class="mk-pet ${fora ? 'fora' : ''}"><svg viewBox="0 0 120 120"><use href="#i-cao"/></svg></div>`,
-  iconSize: [52, 52], iconAnchor: [26, 26], popupAnchor: [0, -26]
+  html: `<div class="mk-pet ${fora ? 'fora' : ''}">${perfil.foto && /^data:image\//.test(perfil.foto)
+    ? `<img src="${perfil.foto}" alt="">` : (nomePet() || '?').charAt(0).toUpperCase()}</div>`,
+  iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
 });
 const marcadorPet = L.marker([area.lat, area.lng], { icon: iconePet(false), zIndexOffset: 1000 }).addTo(map);
-const camadaPatas = L.layerGroup().addTo(map);
+const camadaPatas = L.layerGroup().addTo(map);   // caminho recente
 const camadaAchados = L.layerGroup().addTo(map);
+
+// minimapa do Início: só para olhar (clicar abre o mapa completo)
+const mapaMini = L.map('mapaMini', {
+  zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+  boxZoom: false, keyboard: false, touchZoom: false, tap: false
+}).setView([area.lat, area.lng], 17);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapaMini);
+const miniArea = L.circle([area.lat, area.lng], {
+  color: '#2e7d57', weight: 2, dashArray: '6 6', fillColor: '#2e7d57', fillOpacity: 0.1, radius: area.raio, interactive: false
+}).addTo(mapaMini);
+const miniCasa = L.marker([area.lat, area.lng], { icon: iconeCasa(false), interactive: false, keyboard: false }).addTo(mapaMini);
+const miniPatas = L.layerGroup().addTo(mapaMini);
+const miniPet = L.marker([area.lat, area.lng], { icon: iconePet(false), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(mapaMini);
+let ultimoMini = [null, false];
+new ResizeObserver(() => desenharBpm()).observe($('graficoBpm'));
+// o Início pode estar escondido: quando ele volta a aparecer, enquadra de novo
+new ResizeObserver(() => { mapaMini.invalidateSize(); atualizarMini(...ultimoMini); }).observe($('mapaMini'));
+function atualizarMini(ponto, fora) {
+  ultimoMini = [ponto, fora];
+  if (!$('mapaMini').clientWidth) return;
+  const a = areaAtual();
+  miniArea.setLatLng([a.lat, a.lng]).setRadius(a.raio);
+  miniCasa.setLatLng([a.lat, a.lng]);
+  if (ponto) miniPet.setLatLng([ponto.lat, ponto.lng]).setIcon(iconePet(fora));
+  const limites = miniArea.getBounds();
+  if (ponto) limites.extend([ponto.lat, ponto.lng]);
+  mapaMini.fitBounds(limites.pad(0.25), { animate: false, maxZoom: 18 });
+}
 
 function desenharArea() {
   const a = areaAtual();
   circuloArea.setLatLng([a.lat, a.lng]).setRadius(a.raio);
   marcadorCasa.setLatLng([a.lat, a.lng]);
+  atualizarMini(saida || (ultimoEstado?.lat ? ultimoEstado : null), document.body.dataset.estado === 'fora');
   $('raio').value = a.raio;
   $('raioValor').textContent = a.raio + ' m';
   const r = $('raio');
@@ -141,7 +171,7 @@ function renderEstado(e, novo = true) {
 
   // distância + régua (meio da régua = limite da área)
   $('distancia').textContent = dist != null ? `${dist} m` : 'sem GPS';
-  $('distanciaLegenda').textContent = `da casa · limite ${a.raio} m`;
+  $('distanciaLegenda').textContent = `da casa (limite de ${a.raio} m)`;
   $('reguaPreench').style.width = dist != null ? Math.min(100, (dist / (a.raio * 2)) * 100) + '%' : '0';
 
   // batimentos
@@ -184,13 +214,14 @@ function renderEstado(e, novo = true) {
       : `<b>${nomePet()}</b> está dentro da área segura`);
     if (novo && !fora) adicionarPegada(e.lat, e.lng);
   }
+  atualizarMini(ponto, fora);
 
   atualizarStatus(e, fora, dist);
   if (novo) verificarMudancas(e, fora);
   if (novo && Date.now() - ultimoRenderSaude > 3000) renderSaude();
 }
 
-// rastro de patinhas apontando para onde o pet andou
+// rastro de patinhas: as últimas posições do pet
 function adicionarPegada(lat, lng) {
   const ult = trilha[trilha.length - 1];
   if (ult && map.distance([ult.lat, ult.lng], [lat, lng]) < 3) return;
@@ -201,9 +232,14 @@ function adicionarPegada(lat, lng) {
   }
   trilha.push({ lat, lng, rumo });
   if (trilha.length > 30) trilha.shift();
-  camadaPatas.clearLayers();
+  desenharPatas(camadaPatas);
+  desenharPatas(miniPatas);
+}
+// cada pegada aponta para onde o pet andou; as mais antigas vão sumindo
+function desenharPatas(camada) {
+  camada.clearLayers();
   trilha.slice(0, -1).forEach((p, i, lista) => {
-    const opac = 0.25 + 0.65 * ((i + 1) / lista.length);
+    const opac = 0.25 + 0.7 * ((i + 1) / lista.length);
     const lado = i % 2 ? 4 : -4;
     L.marker([p.lat, p.lng], {
       interactive: false, keyboard: false,
@@ -211,7 +247,7 @@ function adicionarPegada(lat, lng) {
         className: 'mk-pata', iconSize: [16, 16], iconAnchor: [8, 8],
         html: `<svg style="opacity:${opac};transform:rotate(${p.rumo}deg) translateX(${lado}px)"><use href="#i-pata"/></svg>`
       })
-    }).addTo(camadaPatas);
+    }).addTo(camada);
   });
 }
 
@@ -229,24 +265,24 @@ function atualizarStatus(e, fora, dist) {
     estado = 'encontrado'; etiqueta = 'Pet encontrado';
     texto = `${nomePet()} foi encontrado por ${quemAchou(enc)} às ${fmtHora(enc.criadoEm)}`
       + (enc.estadoPet ? ` (${(ESTADO_PET[enc.estadoPet] || '').toLowerCase()})` : '')
-      + `. ${enc.status === 'a_caminho' ? 'Você avisou que está a caminho.' : 'Veja o ponto exato e combine a busca.'}`;
+      + `. ${enc.status === 'a_caminho' ? 'Você avisou que está a caminho.' : 'O ponto exato está no mapa.'}`;
   } else if (fora) {
     estado = 'fora'; etiqueta = 'Fora da área';
-    texto = `${nomePet()} saiu da área segura às ${fmtHora(saida?.em)}, a ${dist} m de casa. Fora da área a coleira não envia a posição: o LED pisca e quem encontrar pode avisar você pelo QR.`;
+    texto = `Saiu às ${fmtHora(saida?.em)}, a ${dist} m de casa. Longe do Wi-Fi a coleira não envia a posição; o mapa mostra o último ponto.`;
   } else if (semSinal(e)) {
     estado = 'sem-sinal'; etiqueta = 'Fora do Wi-Fi';
-    texto = `A coleira não sincroniza desde ${fmtHora(e.atualizadoEm)}. Ela continua medindo os sinais e conferindo a área segura, e envia tudo quando voltar ao Wi-Fi.`;
+    texto = `Sem sincronizar desde ${fmtHora(e.atualizadoEm)}. A coleira guarda os dados e envia quando voltar ao Wi-Fi.`;
   } else if (dist == null) {
     estado = 'aguardando'; etiqueta = 'Procurando GPS';
-    texto = 'A coleira está ligada e aguardando sinal de GPS.';
+    texto = 'Coleira ligada, esperando o sinal do GPS.';
   } else {
     estado = 'dentro'; etiqueta = 'Em casa';
-    texto = `${nomePet()} está dentro da área segura. Tudo tranquilo por aqui.`;
+    texto = `${nomePet()} está dentro da área segura.`;
   }
   if (perfil.perdido && !enc) {
     etiqueta = 'Modo perdido';
-    texto = `Procurando ${nomePet()}. A página do QR está pedindo ajuda a quem encontrá-lo.`
-      + (saida ? ` Ele saiu da área às ${fmtHora(saida.em)}.` : '');
+    texto = `A página do QR está pedindo ajuda a quem encontrar ${nomePet()}.`
+      + (saida ? ` Saiu da área às ${fmtHora(saida.em)}.` : '');
   }
   document.body.dataset.estado = estado;
   $('etiquetaEstado').textContent = etiqueta;
@@ -271,8 +307,8 @@ function atualizarStatus(e, fora, dist) {
     usar($('bannerIcone'), 'i-check');
     $('bannerTitulo').textContent = `${nomePet()} foi encontrado!`;
     $('bannerTexto').textContent = [
-      `${quemAchou(enc)}${enc.achador?.telefone ? ' · ' + telefoneBonito(enc.achador.telefone) : ''} confirmou pelo QR às ${fmtHora(enc.criadoEm)}.`,
-      [ESTADO_PET[enc.estadoPet], ONDE_FICA[enc.ondeFica]].filter(Boolean).join(' · ')
+      `${quemAchou(enc)}${enc.achador?.telefone ? ', ' + telefoneBonito(enc.achador.telefone) + ',' : ''} confirmou pelo QR às ${fmtHora(enc.criadoEm)}.`,
+      [ESTADO_PET[enc.estadoPet], ONDE_FICA[enc.ondeFica]].filter(Boolean).join('. ') + '.'
     ].filter(Boolean).join(' ');
     $('bannerMapa').hidden = !(enc.lat && enc.lng);
     if (enc.lat && enc.lng) $('bannerMapa').href = linkRota(enc.lat, enc.lng);
@@ -287,7 +323,7 @@ function atualizarStatus(e, fora, dist) {
     return;
   }
   $('bannerZap').hidden = false;
-  $('btnEncontradoBanner').lastChild.textContent = 'Pet encontrado';
+  $('btnEncontradoBanner').lastChild.textContent = 'Marcar como encontrado';
 
   if (perfil.perdido) {
     const desde = perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora';
@@ -296,7 +332,7 @@ function atualizarStatus(e, fora, dist) {
     $('banner').classList.add('perdido');
     usar($('bannerIcone'), 'i-megafone');
     $('bannerTitulo').textContent = 'Modo pet perdido ativo';
-    $('bannerTexto').textContent = `Desde ${desde}. A página do QR pede ajuda e você é avisado quando alguém encontrar ${nomePet()}.`;
+    $('bannerTexto').textContent = `Ativo desde ${desde}. Você recebe um aviso aqui quando alguém escanear o QR.`;
     $('bannerZap').href = pedidoAjuda(`${nomePet()} está perdido!`);
     $('btnEncontradoBanner').hidden = false;
     $('btnPerdidoBanner').hidden = true;
@@ -310,11 +346,11 @@ function atualizarStatus(e, fora, dist) {
   $('banner').hidden = !problema;
   if (problema) {
     const msg = problema === 'fora'
-      ? `Saiu às ${fmtHora(saida?.em)}, a ${dist} m de casa. A coleira está piscando o LED; quem encontrar pode avisar você pelo QR.`
+      ? 'O LED da coleira está piscando. Quem encontrar pode avisar você pelo QR.'
       : `A coleira de ${nomePet()} foi removida.`;
     $('banner').classList.toggle('coleira', problema === 'coleira');
     usar($('bannerIcone'), problema === 'fora' ? 'i-corre' : 'i-tag');
-    $('bannerTitulo').textContent = problema === 'fora' ? `${nomePet()} saiu da área segura` : 'Coleira removida!';
+    $('bannerTitulo').textContent = problema === 'fora' ? `${nomePet()} saiu da área segura` : 'Coleira removida';
     $('bannerTexto').textContent = msg;
     $('bannerZap').href = pedidoAjuda(problema === 'fora' ? `${nomePet()} fugiu de casa!` : `A coleira de ${nomePet()} foi removida.`);
     $('btnPerdidoBanner').hidden = problema !== 'fora';
@@ -325,6 +361,7 @@ function atualizarStatus(e, fora, dist) {
 
 function desenharBpm() {
   const cv = $('graficoBpm'), ctx = cv.getContext('2d');
+  if (!cv.clientWidth) return;            // Início escondido: desenha quando aparecer
   const dpr = devicePixelRatio || 1;
   const w = (cv.width = Math.max(1, cv.clientWidth * dpr)), h = (cv.height = 44 * dpr);
   ctx.clearRect(0, 0, w, h);
@@ -332,17 +369,12 @@ function desenharBpm() {
   if (vals.length < 2) return;
   const min = Math.min(...vals) - 8, max = Math.max(...vals) + 8;
   const ponto = (v, i) => [(i / 59) * w, h - ((v - min) / (max - min)) * (h - 8) - 4];
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, 'rgba(239,64,87,0.28)'); grad.addColorStop(1, 'rgba(239,64,87,0)');
   // segmentos contínuos (sem leitura = falha na linha)
   let seg = [];
   const fechar = () => {
     if (seg.length > 1) {
       ctx.beginPath(); seg.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      ctx.lineTo(seg[seg.length - 1][0], h); ctx.lineTo(seg[0][0], h); ctx.closePath();
-      ctx.fillStyle = grad; ctx.fill();
-      ctx.beginPath(); seg.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
-      ctx.strokeStyle = '#ef4057'; ctx.lineWidth = 2.5 * dpr; ctx.lineJoin = 'round'; ctx.stroke();
+      ctx.strokeStyle = '#262b2e'; ctx.lineWidth = 1.5 * dpr; ctx.lineJoin = 'round'; ctx.stroke();
     }
     seg = [];
   };
@@ -368,18 +400,17 @@ function renderAlertas(lista) {
   ul.replaceChildren();
   if (!lista.length) {
     const li = document.createElement('li'); li.className = 'vazio';
-    li.append(iconeSvg('i-pata'), document.createTextNode('Nenhum alerta. Seu pet está tranquilo.'));
+    li.append(iconeSvg('i-pata'), document.createTextNode('Nenhum alerta por enquanto.'));
     ul.append(li);
   } else lista.forEach((a, i) => {
     const [classe, icone] = TIPO[a.tipo] || ['', 'i-sino'];
     const li = document.createElement('li');
     li.className = classe;
-    li.style.animationDelay = Math.min(i, 6) * 40 + 'ms';
     const ic = document.createElement('span'); ic.className = 'icone'; ic.append(iconeSvg(icone));
     const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = a.mensagem;
     if (a.lat && a.lng) {
       const link = document.createElement('a');
-      link.href = linkMapa(a.lat, a.lng); link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'ver no mapa';
+      link.href = linkMapa(a.lat, a.lng); link.target = '_blank'; link.rel = 'noopener'; link.textContent = 'Ver no mapa';
       msg.append(' ', link);
     }
     if (a.contatoNome || a.contatoTelefone) msg.append(linhaContato(a));
@@ -390,7 +421,7 @@ function renderAlertas(lista) {
   });
   // os 3 mais recentes também aparecem no Início
   $('alertasResumo').replaceChildren(...[...ul.children].slice(0, 3).map((li) => {
-    const c = li.cloneNode(true); c.style.animationDelay = '0ms'; return c;
+    return li.cloneNode(true);
   }));
   ultimaLista = lista;
   atualizarSelo();
@@ -415,11 +446,11 @@ function marcarAlertasLidos() {
 
 function linhaContato(a) {
   const c = document.createElement('span'); c.className = 'contato';
-  c.textContent = 'Contato: ' + [a.contatoNome, telefoneBonito(a.contatoTelefone)].filter(Boolean).join(' · ');
+  c.textContent = 'Contato: ' + [a.contatoNome, telefoneBonito(a.contatoTelefone)].filter(Boolean).join(', ');
   const tel = telefoneWhatsApp(a.contatoTelefone);
   if (tel.length >= 12) {
     const z = document.createElement('a');
-    z.href = `https://wa.me/${tel}`; z.target = '_blank'; z.rel = 'noopener'; z.textContent = 'chamar no WhatsApp';
+    z.href = `https://wa.me/${tel}`; z.target = '_blank'; z.rel = 'noopener'; z.textContent = 'Chamar no WhatsApp';
     c.append(' ', z);
   }
   return c;
@@ -438,7 +469,7 @@ function desenharAchados(lista) {
     if (a.contatoNome || a.contatoTelefone) pop.append(linhaContato(a));
     L.marker([a.lat, a.lng], {
       zIndexOffset: 900,
-      icon: L.divIcon({ className: '', html: `<div class="mk-achado ${novo ? 'novo' : ''}"><svg><use href="#i-olho"/></svg></div>`, iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -38] })
+      icon: L.divIcon({ className: '', html: `<div class="mk-achado ${novo ? 'novo' : ''}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -9] })
     }).bindPopup(pop).addTo(camadaAchados);
   });
 }
@@ -541,10 +572,10 @@ function atualizarControlesArea() {
   const dica = $('dicaArea');
   if (pend) {
     dica.className = 'dica pendente';
-    dica.textContent = 'Alterações ainda não salvas. Os alertas continuam usando a área anterior até você salvar.';
+    dica.textContent = 'Não salvo. Os alertas usam a área anterior até você salvar.';
   } else if (!dica.classList.contains('salvo')) {
     dica.className = 'dica';
-    dica.textContent = 'A área azul é onde o pet pode ficar sem gerar alerta.';
+    dica.textContent = 'O círculo verde é a área em que o pet pode ficar sem gerar alerta.';
   }
 }
 
@@ -765,8 +796,8 @@ document.querySelectorAll('[data-sim]').forEach((b) => b.addEventListener('click
   }
   if (acao === 'historico') await gerarHistoricoExemplo();
   if (acao === 'vizinhos') {
-    if (!comunidade?.membro()) { mostrarAviso('Primeiro entre na rede do bairro.', 'Abrir', () => irPara('comunidade', true), 6000); return; }
-    if (!comunidade.alertaAtivo()) { mostrarAviso(`Ative o modo perdido e publique o alerta de ${nomePet()} no bairro.`, 'Abrir', () => irPara('comunidade', true), 6000); return; }
+    if (!comunidade?.membro()) { mostrarAviso('Primeiro entre na rede do bairro.', 'Abrir a rede', () => irPara('comunidade', true), 6000); return; }
+    if (!comunidade.alertaAtivo()) { mostrarAviso(`Ative o modo perdido e publique o alerta de ${nomePet()} no bairro.`, 'Abrir a rede', () => irPara('comunidade', true), 6000); return; }
     if (comunidade.simularVizinhos()) mostrarAviso('Dois vizinhos começaram a procurar e um avistou o pet.', 'Ver', () => irPara('comunidade', true), 7000);
     else mostrarAviso('Com o Firebase configurado, use uma segunda conta para testar os vizinhos.', null, null, 6000);
     return;
@@ -785,21 +816,29 @@ function aplicarPerfil() {
   $('nomePetMenu').textContent = nomePet();
   $('pontoPerdido').hidden = !perfil.perdido && !enc;
   ['btnPerdido', 'btnPerdido2'].forEach((id) => {
-    $(id).querySelector('span').textContent = enc ? 'Já estou com ele' : perfil.perdido ? 'Pet encontrado' : 'Meu pet sumiu';
+    $(id).querySelector('span').textContent = enc ? 'Já estou com ele' : perfil.perdido ? 'Marcar como encontrado' : 'Ativar modo perdido';
     usar($(id).querySelector('use'), enc || perfil.perdido ? 'i-check' : 'i-megafone');
   });
   if (enc) {
     $('mpTitulo').textContent = `${nomePet()} foi encontrado!`;
     $('mpTexto').textContent = `${quemAchou(enc)}${enc.achador?.telefone ? ' (' + telefoneBonito(enc.achador.telefone) + ')' : ''} confirmou pelo QR às ${fmtHora(enc.criadoEm)}`
-      + `${enc.lat ? ' e enviou a localização exata' : ''}. Veja o cartão do encontro abaixo e toque em "Já estou com ele" quando buscar ${nomePet()}.`;
+      + `${enc.lat ? ' e enviou a localização exata' : ''}. Quando buscar ${nomePet()}, toque em "Já estou com ele".`;
   } else {
-    $('mpTitulo').textContent = perfil.perdido ? 'Modo pet perdido ATIVO' : 'Modo pet perdido desligado';
+    $('mpTitulo').textContent = perfil.perdido ? 'Modo pet perdido ativo' : 'Modo pet perdido desligado';
     $('mpTexto').textContent = perfil.perdido
-      ? `Desde ${perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora'}. A coleira pisca o LED sem parar e a página do QR pede ajuda a quem encontrar ${nomePet()}.`
-      : 'Se o pet sumir, ative para a coleira piscar o LED sem parar e a página do QR pedir ajuda a quem encontrá-lo.';
+      ? `Ativo desde ${perfil.perdidoDesde ? fmtHora(new Date(perfil.perdidoDesde)) : 'agora'}. O LED pisca sem parar e a página do QR pede ajuda.`
+      : 'Se o pet sumir: o LED da coleira pisca sem parar e a página do QR pede ajuda a quem encontrar.';
   }
   if (!formSujo) preencherPerfil();
   document.querySelectorAll('[data-nome-pet]').forEach((el) => { el.textContent = nomePet(); });
+  // avatar: foto do perfil ou a inicial do nome
+  document.querySelectorAll('[data-avatar]').forEach((el) => {
+    el.replaceChildren();
+    if (perfil.foto) { const img = document.createElement('img'); img.src = perfil.foto; img.alt = ''; el.append(img); }
+    else el.textContent = (nomePet() || '?').charAt(0).toUpperCase();
+  });
+  marcadorPet.setIcon(iconePet(document.body.dataset.estado === 'fora'));
+  miniPet.setIcon(iconePet(document.body.dataset.estado === 'fora'));
   if (ultimoEstado) renderEstado(ultimoEstado, false);
   else atualizarStatus(null, false, null);
   comunidade?.atualizarPet();
@@ -880,10 +919,10 @@ function desenharQR() {
   const local = location.protocol === 'file:' || ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   if (local) {
     $('qrDica').className = 'dica qr-dica atencao';
-    $('qrDica').textContent = 'Você está abrindo o site pelo computador. Gere o QR pelo site publicado (GitHub Pages), senão ele aponta para um endereço que só existe aqui.';
+    $('qrDica').textContent = 'Este QR aponta para o seu computador. Gere o QR pelo site publicado (GitHub Pages).';
   }
   if (typeof qrcode !== 'function') {
-    $('qrDica').textContent = 'Não consegui carregar o gerador de QR. Confira a internet e recarregue.';
+    $('qrDica').textContent = 'O gerador de QR não carregou. Confira a internet e recarregue a página.';
     return;
   }
   const qr = qrcode(0, 'M');
@@ -892,7 +931,7 @@ function desenharQR() {
   const n = qr.getModuleCount(), margem = 3, px = 10, cv = $('qrCanvas'), ctx = cv.getContext('2d');
   cv.width = cv.height = (n + margem * 2) * px;
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
-  ctx.fillStyle = '#1d1b3a';
+  ctx.fillStyle = '#000';
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
     if (qr.isDark(r, c)) ctx.fillRect((c + margem) * px, (r + margem) * px, px, px);
   }
@@ -939,7 +978,7 @@ async function marcarEncontrado() {
     }
     if (estavaPerdido || perfil.encontrado) await definirPerdido(false, abertos[0]);
     else { aplicarPerfil(); }
-    mostrarAviso(`Que bom que ${nomePet()} voltou!`, estavaPerdido && !abertos.length ? 'Desfazer' : null,
+    mostrarAviso(`${nomePet()} marcado como encontrado.`, estavaPerdido && !abertos.length ? 'Desfazer' : null,
       estavaPerdido && !abertos.length ? () => definirPerdido(true).catch(falhaPerdido) : null);
   } catch (err) { falhaPerdido(err); }
 }
@@ -1034,7 +1073,7 @@ function renderSaude() {
   const pct = an.pctHoje;
   $('sMinHoje').textContent = hoje.minutosAtivos || 0;
   $('sDistHoje').textContent = fmtDist(hoje.distanciaM || 0);
-  $('sNormalAtiv').textContent = an.normalMin ? `${Math.round(an.normalMin)} min · ${fmtDist(an.normalDist || 0)}` : 'ainda sem histórico';
+  $('sNormalAtiv').textContent = an.normalMin ? `${Math.round(an.normalMin)} min, ${fmtDist(an.normalDist || 0)}` : 'ainda sem histórico';
   $('sPctHoje').textContent = pct != null ? `${Math.round(pct * 100)}%` : '-';
   $('sAnel').setAttribute('stroke-dasharray', `${Math.min(1, pct || 0) * 100} 100`);
   $('sAnel').classList.toggle('completo', (pct || 0) >= 1);
@@ -1113,7 +1152,7 @@ function cartaoEncontro(enc, compacto) {
   const local = el('p', 'encontro-local');
   if (enc.lat && enc.lng) {
     local.append(iconeSvg('i-mapa'), document.createTextNode(
-      `Localização exata enviada ${enc.mapaEm ? 'às ' + fmtHora(enc.mapaEm) : ''}${enc.precisao ? ` · precisão de ~${enc.precisao} m` : ''}`));
+      `Localização exata enviada ${enc.mapaEm ? 'às ' + fmtHora(enc.mapaEm) : ''}${enc.precisao ? `, precisão de ~${enc.precisao} m` : ''}`));
   } else {
     local.append(document.createTextNode('Quem encontrou não compartilhou a localização.'));
   }
@@ -1122,7 +1161,7 @@ function cartaoEncontro(enc, compacto) {
   const quem = el('p', 'encontro-quem');
   const nome = enc.achador?.nome || 'Pessoa que encontrou';
   quem.append(el('b', null, nome));
-  if (enc.achador?.telefone) quem.append(document.createTextNode(' · ' + telefoneBonito(enc.achador.telefone)));
+  if (enc.achador?.telefone) quem.append(document.createTextNode(', ' + telefoneBonito(enc.achador.telefone)));
   info.append(quem);
   corpo.append(info);
   c.append(corpo);
@@ -1215,16 +1254,16 @@ function desenharEncontrosNoMapa() {
     const pop = el('div', 'pop-encontro');
     pop.append(el('b', null, enc.status === 'resolvido' ? 'Encontro encerrado' : `Alguém encontrou ${nomePet()}`),
       el('div', null, fmtTempo(enc.criadoEm)),
-      el('div', null, [ESTADO_PET[enc.estadoPet], ONDE_FICA[enc.ondeFica]].filter(Boolean).join(' · ')));
+      el('div', null, [ESTADO_PET[enc.estadoPet], ONDE_FICA[enc.ondeFica]].filter(Boolean).join('. ')));
     if (enc.precisao) pop.append(el('div', null, `Precisão de ~${enc.precisao} m`));
     const rota = el('a', null, 'Traçar rota até lá'); rota.href = linkRota(enc.lat, enc.lng); rota.target = '_blank'; rota.rel = 'noopener';
     pop.append(rota);
     L.marker([enc.lat, enc.lng], {
       zIndexOffset: 900, opacity: enc.status === 'resolvido' ? 0.55 : 1,
-      icon: L.divIcon({ className: '', html: `<div class="mk-achado ${enc.status !== 'resolvido' ? 'novo' : ''}"><svg><use href="#i-olho"/></svg></div>`, iconSize: [40, 40], iconAnchor: [20, 40], popupAnchor: [0, -38] })
+      icon: L.divIcon({ className: '', html: `<div class="mk-achado ${enc.status !== 'resolvido' ? 'novo' : ''}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9], popupAnchor: [0, -9] })
     }).bindPopup(pop).addTo(camadaAchados);
     if (enc.precisao && enc.status !== 'resolvido') {
-      L.circle([enc.lat, enc.lng], { radius: enc.precisao, color: '#1971c2', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(camadaAchados);
+      L.circle([enc.lat, enc.lng], { radius: enc.precisao, color: '#1d5a96', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(camadaAchados);
     }
   });
 }
