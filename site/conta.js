@@ -26,13 +26,13 @@ export async function exigirLogin({ titulo = 'Entrar', texto = '' } = {}) {
     fundo.className = 'login-fundo';
     fundo.innerHTML = `
       <form class="login-cartao" novalidate>
-        <span class="logo"><svg><use href="#i-pata"/></svg></span>
+        <p class="login-marca">Coleira</p>
         <h1></h1>
         <p class="dica login-texto"></p>
         <label class="campo">E-mail <input name="email" type="email" autocomplete="email" required></label>
         <label class="campo">Senha <input name="senha" type="password" autocomplete="current-password" minlength="8" required></label>
         <p class="qr-status" role="status"></p>
-        <button class="pilula primario grande" type="submit" data-modo="entrar">Entrar</button>
+        <button class="botao primario grande" type="submit" data-modo="entrar">Entrar</button>
         <div class="login-links">
           <button type="button" class="link" data-acao="alternar">Criar conta</button>
           <button type="button" class="link" data-acao="esqueci">Esqueci a senha</button>

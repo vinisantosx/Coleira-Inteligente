@@ -150,7 +150,7 @@ export function graficoRepouso(svg, dias, hoje, an) {
   const x = (i) => pad.l + (i + 0.5) * ((W - pad.l - pad.r) / lista.length);
   const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
   if (an.faixa && !an.aprendendo) {
-    svg.append(el('rect', { x: pad.l, y: y(an.faixa[1]), width: W - pad.l - pad.r, height: y(an.faixa[0]) - y(an.faixa[1]), class: 'g-faixa', rx: 6 }));
+    svg.append(el('rect', { x: pad.l, y: y(an.faixa[1]), width: W - pad.l - pad.r, height: y(an.faixa[0]) - y(an.faixa[1]), class: 'g-faixa', rx: 2 }));
     svg.append(el('line', { x1: pad.l, x2: W - pad.r, y1: y(an.media), y2: y(an.media), class: 'g-media' }));
   }
   for (const v of [lo, Math.round((lo + hi) / 2), hi]) {
@@ -189,7 +189,7 @@ export function graficoAtividade(svg, dias, hoje, an) {
     const v = d.minutosAtivos || 0, eHoje = d.data === hoje.data;
     const parado = !eHoje && an.normalMin && v < 0.6 * an.normalMin;
     const r = el('rect', {
-      x: pad.l + i * larg + larg * 0.18, y: y(v), width: larg * 0.64, height: Math.max(2, y(0) - y(v)), rx: Math.min(6, larg * 0.2),
+      x: pad.l + i * larg + larg * 0.18, y: y(v), width: larg * 0.64, height: Math.max(2, y(0) - y(v)), rx: 1,
       class: 'g-barra' + (eHoje ? ' g-hoje' : '') + (parado ? ' g-parado' : '')
     });
     r.append(el('title', {}, `${rotuloDia(d.data, hoje.data)}: ${v} min ativos, ${((d.distanciaM || 0) / 1000).toFixed(1)} km`));

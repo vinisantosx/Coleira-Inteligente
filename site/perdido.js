@@ -31,14 +31,15 @@ function mostrarPerfil(p) {
   $('faixa').hidden = !perfil.perdido || jaAvisado;
   $('faixaEncontrado').hidden = !jaAvisado;
   $('intro').textContent = jaAvisado
-    ? 'Alguém já avisou meu tutor que me encontrou e ele está vindo me buscar. Se eu estiver com você, avise também por aqui.'
+    ? 'Alguém já avisou o tutor que encontrou este pet. Se ele estiver com você, avise também por aqui.'
     : perfil.perdido
-      ? 'Meu tutor está me procurando. Se você me encontrou, avise ele por esta página.'
-      : 'Esta é a minha coleira inteligente. Se eu estiver sozinho por aí, avise meu tutor.';
+      ? 'O tutor está procurando por ele. Se você o encontrou, avise por esta página.'
+      : 'Este pet usa uma coleira com localização. Se ele estiver sozinho, avise o tutor.';
 
   if (perfil.foto) { $('foto').src = perfil.foto; $('foto').alt = `Foto de ${perfil.nome}`; }
   $('foto').hidden = !perfil.foto;
   $('fotoPadrao').style.display = perfil.foto ? 'none' : '';
+  $('fotoPadrao').querySelector('[data-inicial]').textContent = (perfil.nome || '?').charAt(0).toUpperCase();
 
   $('caixaRecado').hidden = !perfil.recado;
   $('recado').textContent = perfil.recado || '';
@@ -157,8 +158,8 @@ function mostrarConversa(enc) {
   $('situacao').textContent = STATUS[enc.status] || STATUS.aberto;
   $('situacao').className = 'qr-situacao ' + enc.status;
   $('conversaTitulo').textContent = resolvido
-    ? `${perfil.nome} está em segurança. Muito obrigado!`
-    : 'Obrigado! O tutor foi avisado.';
+    ? `${perfil.nome} já está com o tutor. Obrigado pela ajuda.`
+    : 'O tutor foi avisado.';
   $('formResposta').hidden = resolvido;
   $('btnAtualizarLocal').hidden = resolvido;
 

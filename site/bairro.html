@@ -5,11 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rede de alerta do bairro | Coleira inteligente</title>
     <meta name="description" content="Vizinhos que ajudam a trazer pets perdidos de volta para casa." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style.css?v=2026-11-27" />
   </head>
   <body class="pagina-bairro">
     <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -33,25 +31,11 @@
         <symbol id="i-qr" viewBox="0 0 24 24"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm2 2h2v2h-2zm-6 2h2v2h-2zm4 0h2v4h-4v-2h2zm-4 2h2v2h-2z"/></symbol>
         <symbol id="i-foto" viewBox="0 0 24 24"><path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></symbol>
         <symbol id="i-coracao" viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.2 2.3 4 6.3 4c2.2 0 3.7 1.3 4.7 2.7h2C14 5.3 15.5 4 17.7 4c4 0 6 4.2 4.3 7.7C19.5 16.4 12 21 12 21z"/></symbol>
-        <!-- carinha do cachorro -->
-        <symbol id="i-cao" viewBox="0 0 120 120">
-          <ellipse cx="27" cy="52" rx="17" ry="30" transform="rotate(18 27 52)" fill="#8a5a3b"/>
-          <ellipse cx="93" cy="52" rx="17" ry="30" transform="rotate(-18 93 52)" fill="#8a5a3b"/>
-          <circle cx="60" cy="58" r="38" fill="#e8b07a"/>
-          <ellipse cx="60" cy="76" rx="22" ry="17" fill="#fbe3c6"/>
-          <ellipse cx="76" cy="44" rx="11" ry="10" fill="#c98a55"/>
-          <circle cx="45" cy="52" r="5.5" fill="#1d1b3a"/><circle cx="75" cy="52" r="5.5" fill="#1d1b3a"/>
-          <circle cx="47" cy="50" r="1.8" fill="#fff"/><circle cx="77" cy="50" r="1.8" fill="#fff"/>
-          <ellipse cx="60" cy="68" rx="8" ry="5.5" fill="#1d1b3a"/>
-          <path d="M60 73v5m-8 1c3 4 13 4 16 0" stroke="#1d1b3a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
-          <path d="M28 92c18 10 46 10 64 0l2 9c-20 11-48 11-68 0z" fill="#ff7a45"/>
-          <circle cx="60" cy="106" r="7" fill="#ffc94a" stroke="#e0a41f" stroke-width="2"/>
-        </symbol>
       </defs>
     </svg>
     <header class="bairro-topo">
-      <span class="logo"><svg><use href="#i-pata"/></svg></span>
       <div>
+        <p class="bairro-marca">Coleira</p>
         <h1>Rede de alerta do bairro</h1>
         <p>Vizinhos que ajudam a trazer pets perdidos de volta para casa. Você não precisa ter a coleira para participar.</p>
       </div>
@@ -65,6 +49,6 @@
     </main>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-    <script type="module" src="bairro.js"></script>
+    <script type="module" src="bairro.js?v=2026-11-27"></script>
   </body>
 </html>
