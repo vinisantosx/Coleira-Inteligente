@@ -64,7 +64,10 @@ h3 { font-size: 0.95rem; }
 
 /* ícones: só onde ajudam (marcadores, coleira); em botões e títulos não */
 .botao svg, .pilula svg, .banner-acoes svg { width: 16px; height: 16px; fill: currentColor; flex: none; }
-h2 > svg { display: none; }
+h2 > svg:not(.h-icone):not(.secao-icone) { display: none; }
+.h-icone { width: 18px; height: 18px; fill: var(--grama); vertical-align: -3px; margin-right: 8px; }
+.secao-titulo { display: flex; align-items: center; gap: 10px; }
+.secao-icone { width: 34px; height: 34px; padding: 7px; border-radius: 10px; background: var(--bolinha-claro); fill: var(--grama-esc); flex: none; }
 
 /* ---------------------------------------------------------------- botões */
 .botao, .pilula {
@@ -402,7 +405,12 @@ a.sinal-sub:hover { text-decoration: underline; }
 .percebidos { list-style: none; display: grid; }
 .percebidos li { display: block; padding: 8px 0 8px 12px; border-left: 3px solid var(--linha-forte); font-size: 0.92rem; }
 .percebidos li + li { margin-top: 6px; }
-.percebidos li > span:first-child { display: none; }
+.percebidos li { display: flex; gap: 10px; align-items: start; }
+.percebidos li > span:first-child { display: inline-grid; place-items: center; width: 26px; height: 26px; flex: none; border-radius: 50%; background: var(--fundo); }
+.percebidos li > span:first-child svg { width: 15px; height: 15px; fill: var(--suave); }
+.percebidos .bom > span:first-child { background: var(--grama-claro); } .percebidos .bom > span:first-child svg { fill: var(--grama); }
+.percebidos .aviso > span:first-child { background: var(--ambar-claro); } .percebidos .aviso > span:first-child svg { fill: var(--ambar); }
+.percebidos .alerta > span:first-child { background: var(--vermelho-claro); } .percebidos .alerta > span:first-child svg { fill: var(--vermelho); }
 .percebidos .bom { border-left-color: var(--verde); }
 .percebidos .aviso { border-left-color: var(--ambar); }
 .percebidos .alerta { border-left-color: var(--vermelho); }
@@ -737,4 +745,288 @@ input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='
 
 @media (hover: none) {
   .botao:hover, .pilula:hover, .minimapa:hover { transform: none; box-shadow: none; }
+}
+
+/* =====================================================================
+   Ícones de estado e passos do modo perdido
+   ===================================================================== */
+.etiqueta { display: inline-flex; align-items: center; gap: 5px; }
+.etiqueta-icone { width: 14px; height: 14px; fill: currentColor; flex: none; }
+.passos { list-style: none; display: grid; gap: 8px; counter-reset: passo; margin: 2px 0 6px; width: 100%; }
+.passos li { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; counter-increment: passo; }
+.passo-icone { width: 32px; height: 32px; padding: 7px; border-radius: 50%; background: var(--fundo); fill: var(--grama-esc); flex: none; }
+.passos li span::before { content: counter(passo) '. '; font-weight: 700; color: var(--suave); }
+body[data-perdido='true'] .passo-icone { background: rgba(255, 255, 255, 0.55); fill: var(--tinta); }
+body[data-perdido='true'] .passos li span::before { color: var(--tinta); }
+
+/* =====================================================================
+   Movimento com significado
+   ===================================================================== */
+/* ao abrir o Início: a plaquinha é pendurada na argola e balança até parar */
+.estado .plaquinha { animation: pendurar 1s cubic-bezier(.3, 1.4, .5, 1) both; transform-origin: 50% -8px; }
+@keyframes pendurar {
+  0% { transform: translateY(-18px) rotate(-14deg); opacity: 0; }
+  35% { transform: translateY(0) rotate(10deg); opacity: 1; }
+  60% { transform: rotate(-5deg); } 80% { transform: rotate(2deg); } 100% { transform: rotate(0); }
+}
+.estado .etiqueta { animation: aparecer-etiqueta 0.35s 0.35s ease-out both; }
+@keyframes aparecer-etiqueta { from { opacity: 0; transform: translateX(-6px); } }
+
+/* o estado mudou (em casa -> fora, fora -> encontrado...) */
+.estado.trocou { animation: trocou 0.5s ease-out; }
+.estado.trocou .etiqueta { animation: estalo 0.45s ease-out; }
+@keyframes trocou { 0% { transform: scale(0.985); } 60% { transform: scale(1.006); } 100% { transform: none; } }
+@keyframes estalo { 0% { transform: scale(0.8); } 60% { transform: scale(1.12); } 100% { transform: none; } }
+
+/* modo perdido ligado: o cartaz é "colado" no poste */
+body[data-perdido='true'] .estado { animation: colar 0.45s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes colar { 0% { transform: scale(1.04) rotate(-0.6deg); } 100% { transform: none; } }
+body[data-estado='encontrado'] .estado { animation: trocou 0.6s ease-out; }
+
+/* número novo dos batimentos dá um toque */
+.tique { animation: tique 0.3s ease-out; display: inline-block; }
+@keyframes tique { 0% { transform: translateY(-3px); color: var(--vermelho); } 100% { transform: none; } }
+#cartaoColeira.trocou .marca-tag { animation: estalo 0.45s ease-out; }
+
+/* barras do GPS acendem uma depois da outra */
+.barras i { transition: background 0.2s; }
+.barras i:nth-child(2) { transition-delay: 0.06s; } .barras i:nth-child(3) { transition-delay: 0.12s; } .barras i:nth-child(4) { transition-delay: 0.18s; }
+.regua b { transition: width 0.8s cubic-bezier(.2, .8, .2, 1); }
+
+/* pegada nova é "carimbada" no mapa */
+.mk-pata.nova svg { animation: carimbo 0.45s ease-out; }
+@keyframes carimbo { 0% { transform: scale(1.8); opacity: 0; } 100% { opacity: 1; } }
+
+/* alerta novo entra deslizando, com o ícone pulando */
+.alertas li.chegou { animation: chegou 0.45s ease-out; }
+.alertas li.chegou .icone { animation: estalo 0.5s 0.15s ease-out; }
+@keyframes chegou { from { opacity: 0; transform: translateY(-8px); background: var(--bolinha-claro); } to { background: transparent; } }
+.selo.pulou { animation: estalo 0.4s ease-out; }
+
+/* cartão de encontro chega com destaque azul */
+.encontro.chegou { animation: chegou-azul 0.6s ease-out; }
+@keyframes chegou-azul { from { opacity: 0; transform: translateY(-6px); box-shadow: 0 0 0 4px rgba(37, 99, 166, 0.25); } }
+
+/* o anel de atividade enche ao abrir a seção */
+.anel-valor { transition: stroke-dasharray 0.9s cubic-bezier(.2, .8, .2, 1); }
+
+/* ícones respondem ao mouse com o gesto do que representam */
+.botao:hover svg:has(use[href='#i-megafone']), .nav-item:hover svg:has(use[href='#i-megafone']) { animation: falar 0.5s ease-in-out; }
+.botao:hover svg:has(use[href='#i-mapa']), .nav-item:hover svg:has(use[href='#i-mapa']) { animation: quicar 0.5s ease-out; }
+.nav-item:hover svg:has(use[href='#i-coracao']), .botao:hover svg:has(use[href='#i-coracao']) { animation: bater 0.8s ease-in-out; }
+.nav-item:hover svg:has(use[href='#i-sino']), .botao:hover svg:has(use[href='#i-sino']) { animation: tocar 0.6s ease-in-out; transform-origin: 50% 10%; }
+.nav-item:hover svg:has(use[href='#i-casa']) { animation: quicar 0.5s ease-out; }
+.nav-item:hover svg:has(use[href='#i-vizinhos']) { animation: quicar 0.5s ease-out; }
+.nav-item:hover svg:has(use[href='#i-ferramenta']), .botao:hover svg:has(use[href='#i-ferramenta']) { animation: girar 0.6s ease-in-out; }
+.botao:hover svg:has(use[href='#i-check']) { animation: estalo 0.4s ease-out; }
+.botao:hover svg:has(use[href='#i-zap']) { animation: tocar 0.6s ease-in-out; }
+@keyframes falar { 0%, 100% { transform: none; } 25% { transform: rotate(-12deg) scale(1.1); } 50% { transform: rotate(8deg) scale(1.1); } 75% { transform: rotate(-4deg); } }
+@keyframes quicar { 0%, 100% { transform: none; } 40% { transform: translateY(-4px); } 70% { transform: translateY(1px); } }
+@keyframes tocar { 0%, 100% { transform: none; } 20% { transform: rotate(14deg); } 40% { transform: rotate(-12deg); } 60% { transform: rotate(8deg); } 80% { transform: rotate(-4deg); } }
+@keyframes girar { 0%, 100% { transform: none; } 50% { transform: rotate(-30deg); } }
+
+/* enquanto não chega dado, o valor "respira" em vez de ficar parado num traço */
+.carregando .sinal-valor, .carregando .estado-dist .valor { animation: respirar 1.4s ease-in-out infinite; }
+@keyframes respirar { 50% { opacity: 0.35; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .estado .plaquinha, .estado .etiqueta, body[data-perdido='true'] .estado, .encontro.chegou, .alertas li.chegou { animation: none !important; }
+}
+
+.qr-foto-icone { width: 20px; height: 20px; fill: var(--grama); margin-right: 8px; }
+.qr-foto-btn { gap: 0; }
+.percebidos li { border-left: 0; padding-left: 0; }
+.g-barra { fill: var(--grama); opacity: 0.85; }
+.lg-barra { background: var(--grama); }
+.anel-valor { stroke: var(--grama); }
+.anel-valor.completo { stroke: var(--grama-esc); }
+
+/* =====================================================================
+   Temas de cor (Configurações > Aparência). "Lavanda" é a paleta da
+   primeira versão do projeto.
+   ===================================================================== */
+html[data-tema='lavanda'] {
+  --fundo: #f4f3ff; --grama: #4747a8; --grama-esc: #2c2c78; --grama-claro: #e9e8ff;
+  --bolinha: #ffc94a; --bolinha-claro: #fff3d1; --linha: #e3e1f5; --linha-forte: #c3c0e6; --tinta: #1d1b3a; --suave: #6b6a8c;
+}
+html[data-tema='ceu'] {
+  --fundo: #eff5fb; --grama: #1f6fb2; --grama-esc: #154f80; --grama-claro: #e0eefa;
+  --bolinha: #ffd166; --bolinha-claro: #fff4d6; --linha: #d8e4ef; --linha-forte: #b3c6d8;
+}
+html[data-tema='caramelo'] {
+  --fundo: #f8f3ec; --grama: #a8641f; --grama-esc: #7c4813; --grama-claro: #f6e9d8;
+  --bolinha: #7fb069; --bolinha-claro: #e6f2df; --linha: #eadfce; --linha-forte: #d3c1a6;
+}
+
+/* títulos com a letra arredondada da primeira versão */
+html[data-titulos='arredondados'] { --fonte-titulo: 'Fredoka', var(--fonte); }
+html:not([data-titulos='arredondados']) { --fonte-titulo: var(--fonte); }
+h1, h2, h3, .secao-titulo, .marca strong, .estado-dist .valor, .sinal-valor, .saude-valor, .anel-centro b, .bz-numeros b, .qr-cartaz h1 {
+  font-family: var(--fonte-titulo);
+}
+html[data-titulos='arredondados'] h1, html[data-titulos='arredondados'] h2, html[data-titulos='arredondados'] .secao-titulo { font-weight: 600; letter-spacing: 0; }
+
+/* fundo de patinhas da primeira versão (bem leve) */
+html[data-patas='sim'] body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'%3E%3Cg fill='%2322302a' fill-opacity='0.045'%3E%3Cg transform='translate(20 30) rotate(-20)'%3E%3Cellipse cx='12' cy='16' rx='5' ry='4.2'/%3E%3Ccircle cx='5.5' cy='10' r='2.2'/%3E%3Ccircle cx='9.5' cy='6.2' r='2.3'/%3E%3Ccircle cx='14.5' cy='6.2' r='2.3'/%3E%3Ccircle cx='18.5' cy='10' r='2.2'/%3E%3C/g%3E%3Cg transform='translate(110 110) rotate(25)'%3E%3Cellipse cx='12' cy='16' rx='5' ry='4.2'/%3E%3Ccircle cx='5.5' cy='10' r='2.2'/%3E%3Ccircle cx='9.5' cy='6.2' r='2.3'/%3E%3Ccircle cx='14.5' cy='6.2' r='2.3'/%3E%3Ccircle cx='18.5' cy='10' r='2.2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* texto maior */
+html[data-texto='grande'] body { font-size: 17px; }
+
+/* reduzir animações (mesmo efeito do ajuste do sistema) */
+html[data-movimento='reduzido'] *, html[data-movimento='reduzido'] *::before, html[data-movimento='reduzido'] *::after {
+  animation: none !important; transition: none !important;
+}
+
+/* =====================================================================
+   Mascote (quando o pet não tem foto) e ondas da primeira versão
+   ===================================================================== */
+.avatar .mascote { width: 100%; height: 100%; background: #fff; }
+.plaquinha .avatar:has(.mascote) { background: #fff; }
+.estado .mascote { animation: respirar-mascote 3.2s ease-in-out infinite; transform-origin: 50% 80%; }
+body[data-estado='fora'] .estado .mascote, body[data-estado='encontrado'] .estado .mascote { animation: pular 0.5s ease-in-out infinite alternate; }
+body[data-estado='sem-sinal'] .mascote { filter: grayscale(0.7); animation: none; }
+@keyframes respirar-mascote { 50% { transform: scale(1.04) rotate(-2deg); } }
+@keyframes pular { to { transform: translateY(-5px) rotate(4deg); } }
+.mk-pet svg { width: 100%; height: 100%; border-radius: 50%; background: #fff; }
+.foto-padrao { display: grid; justify-items: center; gap: 2px; }
+.foto-padrao .mascote { width: 52px; height: 52px; }
+.foto-padrao small { font-size: 0.72rem; color: var(--suave); }
+
+.plaquinha .onda {
+  position: absolute; inset: -2px; border-radius: 50%; border: 3px solid var(--vermelho); opacity: 0; pointer-events: none;
+}
+body[data-estado='fora'] .plaquinha .onda, body[data-perdido='true'] .plaquinha .onda { animation: radar 1.6s ease-out infinite; }
+body[data-perdido='true'] .plaquinha .onda { border-color: var(--tinta); }
+.plaquinha .onda.o2 { animation-delay: 0.8s !important; }
+@keyframes radar { 0% { transform: scale(1); opacity: 0.7; } 100% { transform: scale(1.7); opacity: 0; } }
+
+/* =====================================================================
+   Topo colorido (primeira versão): o quadro do pet na cor do estado
+   ===================================================================== */
+body { --estado-cor: var(--suave); --estado-esc: var(--tinta); }
+body[data-estado='dentro'] { --estado-cor: var(--grama); --estado-esc: var(--grama-esc); }
+body[data-estado='fora'] { --estado-cor: var(--vermelho); --estado-esc: #8f2219; }
+body[data-estado='sem-sinal'] { --estado-cor: var(--ambar); --estado-esc: #7d4b00; }
+body[data-estado='encontrado'] { --estado-cor: var(--azul); --estado-esc: #174a80; }
+html[data-topo='colorido'] body:not([data-perdido='true']) .estado {
+  background: linear-gradient(120deg, var(--estado-cor), var(--estado-esc)); border-color: transparent; color: #fff;
+  box-shadow: 0 18px 36px -22px var(--estado-esc);
+}
+html[data-topo='colorido'] body:not([data-perdido='true']) .estado .etiqueta { background: rgba(255, 255, 255, 0.22); color: #fff; }
+html[data-topo='colorido'] body:not([data-perdido='true']) .estado-dist small { color: rgba(255, 255, 255, 0.85); }
+html[data-topo='colorido'] body:not([data-perdido='true']) .regua { background: rgba(255, 255, 255, 0.25); }
+html[data-topo='colorido'] body:not([data-perdido='true']) .regua b { background: #fff; }
+html[data-topo='colorido'] body:not([data-perdido='true']) .regua i { background: rgba(255, 255, 255, 0.9); }
+html[data-topo='colorido'] body:not([data-perdido='true']) .estado .botao { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.55); color: #fff; }
+html[data-topo='colorido'] body:not([data-perdido='true']) .estado .botao:hover { background: rgba(255, 255, 255, 0.28); }
+html[data-topo='colorido'] body:not([data-perdido='true']) .plaquinha,
+html[data-topo='colorido'] body:not([data-perdido='true']) .estado .plaquinha::before { background: rgba(255, 255, 255, 0.85); border-color: rgba(255, 255, 255, 0.85); }
+html[data-topo='colorido'] body:not([data-perdido='true']) .estado .plaquinha::before { background: transparent; }
+html[data-topo='colorido'] body:not([data-perdido='true']) .plaquinha .onda { border-color: #fff; }
+
+/* =====================================================================
+   Área de testes: botões-brinquedo da primeira versão
+   ===================================================================== */
+.brinquedos .botoes { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.brinquedos .botao {
+  flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 10px;
+  min-height: 92px; padding: 14px; white-space: normal; text-align: left;
+  border: 0; border-radius: 16px; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.08);
+}
+.brinquedos .botao svg { width: 26px; height: 26px; }
+.brinquedos .botao:hover { transform: translateY(-3px) rotate(-1deg); box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.08); }
+.brinquedos .botao:active { transform: translateY(1px); box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08); }
+.brinquedos .botao:nth-child(1) { background: var(--grama-claro); } .brinquedos .botao:nth-child(1) svg { fill: var(--grama); }
+.brinquedos .botao:nth-child(2) { background: #ffe1d4; } .brinquedos .botao:nth-child(2) svg { fill: #e0582a; }
+.brinquedos .botao:nth-child(3) { background: #fff1c9; } .brinquedos .botao:nth-child(3) svg { fill: #b7800a; }
+.brinquedos .botao:nth-child(4) { background: #e9e8ff; } .brinquedos .botao:nth-child(4) svg { fill: #4747a8; }
+.brinquedos .botao:nth-child(5) { background: var(--azul-claro); } .brinquedos .botao:nth-child(5) svg { fill: var(--azul); }
+.brinquedos .botao:nth-child(6) { background: var(--vermelho-claro); } .brinquedos .botao:nth-child(6) svg { fill: var(--vermelho); }
+.brinquedos .botao:nth-child(7) { background: #dff5d8; } .brinquedos .botao:nth-child(7) svg { fill: #2f8a3a; }
+.brinquedos .botao:nth-child(8) { background: var(--bolinha-claro); } .brinquedos .botao:nth-child(8) svg { fill: var(--grama-esc); }
+.brinquedos .botao.ativo { background: var(--tinta); color: #fff; } .brinquedos .botao.ativo svg { fill: #fff; animation: pular 0.4s ease-in-out infinite alternate; }
+
+/* =====================================================================
+   Configurações
+   ===================================================================== */
+.ajustes-grade { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.ajustes-lado { display: grid; gap: 16px; min-width: 0; }
+.grupo { border: 0; display: grid; gap: 10px; padding: 0; margin: 0 0 14px; min-width: 0; }
+.grupo legend { font-size: 0.82rem; font-weight: 700; color: var(--suave); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+.grupo legend svg { width: 14px; height: 14px; fill: var(--suave); }
+.grupo.privado { padding: 14px; border-radius: var(--raio); background: var(--fundo); }
+.campos-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.campos-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.perfil-nome { flex: 1; display: grid; gap: 10px; min-width: 0; }
+.castrado { align-self: center; }
+.foto-escolher { width: 96px; height: 96px; border-radius: 50%; }
+.conta-linha { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.88rem; padding: 10px 12px; border-radius: var(--raio-botao); background: var(--fundo); }
+
+.escolha { display: flex; flex-wrap: wrap; gap: 8px; }
+.escolha label { position: relative; cursor: pointer; }
+.escolha input { position: absolute; opacity: 0; pointer-events: none; }
+.escolha label > span {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 4px 12px 4px 6px;
+  border: 1px solid var(--linha-forte); border-radius: 20px; background: var(--papel); font-size: 0.9rem; font-weight: 600;
+  transition: border-color 0.15s, background 0.15s, transform 0.12s;
+}
+.escolha label > span:only-of-type:not(:has(svg)) { padding-left: 12px; }
+.escolha svg { width: 30px; height: 30px; border-radius: 50%; background: #fff; }
+.escolha svg[viewBox='0 0 24 24'] { width: 20px; height: 20px; padding: 0; fill: var(--grama); margin-left: 4px; background: none; }
+.escolha .letra { display: inline-grid !important; place-items: center; width: 30px; height: 30px; padding: 0 !important; min-height: 0 !important; border-radius: 50% !important; background: var(--bolinha-claro) !important; color: var(--grama-esc); font-weight: 750; border: 0 !important; }
+.escolha label:has(.letra) { display: inline-flex; align-items: center; border: 1px solid var(--linha-forte); border-radius: 20px; padding: 4px 12px 4px 5px; gap: 6px; background: var(--papel); }
+.escolha label:has(.letra) > span:last-child { border: 0; padding: 0; min-height: 0; background: none; }
+.escolha label:has(.letra):has(input:checked) { background: var(--grama-claro); border-color: var(--grama); box-shadow: inset 0 0 0 1px var(--grama); }
+.escolha input:checked + span { background: var(--grama-claro); border-color: var(--grama); box-shadow: inset 0 0 0 1px var(--grama); }
+.escolha label:hover > span { border-color: var(--grama); }
+.escolha label:active > span { transform: scale(0.97); }
+.escolha input:focus-visible + span { outline: 2px solid var(--azul); outline-offset: 2px; }
+
+.temas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.temas label { position: relative; display: grid; gap: 6px; justify-items: center; padding: 10px 6px; border: 1px solid var(--linha); border-radius: var(--raio-botao); cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: border-color 0.15s, transform 0.12s; }
+.temas input { position: absolute; opacity: 0; pointer-events: none; }
+.temas label:hover { border-color: var(--grama); transform: translateY(-1px); }
+.temas label:has(input:checked) { border-color: var(--grama); box-shadow: inset 0 0 0 1px var(--grama); background: var(--grama-claro); }
+.temas label:has(input:focus-visible) { outline: 2px solid var(--azul); outline-offset: 2px; }
+.tema-amostra { display: flex; }
+.tema-amostra i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; margin-left: -5px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.tema-amostra i:first-child { margin-left: 0; }
+.t-parque i:nth-child(1) { background: #2e7d57; } .t-parque i:nth-child(2) { background: #cfe03a; } .t-parque i:nth-child(3) { background: #f1f5f2; }
+.t-lavanda i:nth-child(1) { background: #4747a8; } .t-lavanda i:nth-child(2) { background: #ffc94a; } .t-lavanda i:nth-child(3) { background: #f4f3ff; }
+.t-ceu i:nth-child(1) { background: #1f6fb2; } .t-ceu i:nth-child(2) { background: #ffd166; } .t-ceu i:nth-child(3) { background: #eff5fb; }
+.t-caramelo i:nth-child(1) { background: #a8641f; } .t-caramelo i:nth-child(2) { background: #7fb069; } .t-caramelo i:nth-child(3) { background: #f8f3ec; }
+.opcoes { gap: 8px; }
+
+@media (max-width: 1000px) { .ajustes-grade { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 520px) {
+  .campos-2, .campos-3 { grid-template-columns: 1fr; }
+  .temas { grid-template-columns: repeat(2, 1fr); }
+  .perfil-foto { flex-direction: column; align-items: start; }
+  .brinquedos .botoes { grid-template-columns: 1fr 1fr; }
+}
+
+.qr-sobre { margin-top: 4px; font-weight: 600; }
+.qr-cuidados { margin: 16px 20px 0; padding: 10px 12px; border-left: 3px solid var(--vermelho); background: var(--vermelho-claro); font-size: 0.95rem; }
+.qr-cuidados strong { display: block; font-size: 0.85rem; color: var(--vermelho); }
+.qr-foto .plaquinha .avatar:has(.mascote) { background: #fff; }
+
+/* =====================================================================
+   App instalado (PWA)
+   ===================================================================== */
+.instalar-lateral { width: 100%; }
+.app-cartao { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.app-icone { width: 64px; height: 64px; border-radius: 16px; flex: none; }
+.app-texto { flex: 1; min-width: 220px; }
+.app-texto h2 { margin-bottom: 4px; }
+.app-ios { margin: 8px 0 0 1.2em; display: grid; gap: 4px; font-size: 0.9rem; }
+.ios-icone { width: 16px; height: 16px; fill: var(--azul); vertical-align: -2px; }
+.app-cartao.instalado { border-left: 4px solid var(--grama); }
+/* respeita o recorte da tela (notch) quando aberto como app */
+@media (display-mode: standalone) {
+  .lateral { padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+  .topo-movel { padding-top: max(10px, env(safe-area-inset-top)); }
+  .conteudo { padding-bottom: max(56px, env(safe-area-inset-bottom)); }
+  .aviso { bottom: max(20px, env(safe-area-inset-bottom)); }
 }

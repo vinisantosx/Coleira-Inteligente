@@ -39,7 +39,19 @@ function mostrarPerfil(p) {
   if (perfil.foto) { $('foto').src = perfil.foto; $('foto').alt = `Foto de ${perfil.nome}`; }
   $('foto').hidden = !perfil.foto;
   $('fotoPadrao').style.display = perfil.foto ? 'none' : '';
-  $('fotoPadrao').querySelector('[data-inicial]').textContent = (perfil.nome || '?').charAt(0).toUpperCase();
+  // sem foto: o mascote da espécie (cão ou gato) ou a inicial do nome
+  const ava = $('fotoPadrao').querySelector('[data-inicial]');
+  const m = { cao: 'i-cao', gato: 'i-gato' }[perfil.especie || 'cao'];
+  if (m) ava.innerHTML = `<svg class="mascote" viewBox="0 0 120 120" aria-hidden="true"><use href="#${m}"/></svg>`;
+  else ava.textContent = (perfil.nome || '?').charAt(0).toUpperCase();
+  // espécie, raça, porte e cor ajudam a confirmar que é o pet certo
+  const PORTE = { pequeno: 'porte pequeno', medio: 'porte médio', grande: 'porte grande' };
+  const ESPECIE = { cao: 'Cão', gato: 'Gato' };
+  const sobre = [ESPECIE[perfil.especie] || '', perfil.raca, PORTE[perfil.porte], perfil.cor].filter(Boolean).join(', ');
+  $('sobre').hidden = !sobre;
+  $('sobre').textContent = sobre;
+  $('caixaCuidados').hidden = !perfil.cuidados;
+  $('cuidados').textContent = perfil.cuidados || '';
 
   $('caixaRecado').hidden = !perfil.recado;
   $('recado').textContent = perfil.recado || '';

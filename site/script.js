@@ -7,6 +7,9 @@ import {
   iniciarEncontros, ouvirEncontros, criarEncontro, atualizarEncontro, responder, linkRota, ESTADO_PET, ONDE_FICA, STATUS
 } from './encontros.js';
 import { montarComunidade } from './comunidade-ui.js';
+import { contar, moverSuave, destacar } from './movimento.js';
+import { registrarServiceWorker, acompanharInstalacao, instalar, corDaBarra } from './pwa.js';
+import { lerLayout, aplicarLayout, salvarLayout, LAYOUT_PADRAO, lerTutor, salvarTutor, enviarTrocaSenha, lerFicha, salvarFicha, idade } from './ajustes.js';
 import { exigirLogin, sair, emailAtual } from './conta.js';
 import { analisar, graficoRepouso, graficoAtividade, historicoExemplo, dataLocal, diasAtras } from './saude.js';
 
@@ -29,8 +32,9 @@ let idsAvistados = null;                                           // avistament
 const nomePet = () => perfil.nome || PET_NOME;
 let reconhecido = { fora: false, coleira: false };              // alertas que o tutor já viu ("Entendi" / "Pet encontrado")
 let saida = null;                                                 // ponto e hora em que o pet saiu da área segura
-let encontros = [];
-let comunidade = null;                                            // rede do bairro (montada depois do login)                                               // avisos de quem achou o pet pelo QR
+let encontros = [];                                               // avisos de quem achou o pet pelo QR
+let comunidade = null;                                            // rede do bairro (montada depois do login)
+let layout = lerLayout();                                         // aparência escolhida em Configurações
 let diasSaude = {};                                                // resumos diários: { 'AAAA-MM-DD': {...} }
 let analiseSaude = null;
 const CHAVE_SAUDE = 'coleira-saude-' + PET_ID;
@@ -48,7 +52,7 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const circuloArea = L.circle([area.lat, area.lng], {
-  color: '#2e7d57', weight: 2, dashArray: '6 6', fillColor: '#2e7d57', fillOpacity: 0.1, radius: area.raio
+  color: corTema('--grama'), weight: 2, dashArray: '6 6', fillColor: corTema('--grama'), fillOpacity: 0.1, radius: area.raio
 }).addTo(map);
 
 const iconeCasa = (editando) => L.divIcon({
@@ -63,7 +67,8 @@ marcadorCasa.dragging.disable();
 const iconePet = (fora) => L.divIcon({
   className: '',
   html: `<div class="mk-pet ${fora ? 'fora' : ''}">${perfil.foto && /^data:image\//.test(perfil.foto)
-    ? `<img src="${perfil.foto}" alt="">` : (nomePet() || '?').charAt(0).toUpperCase()}</div>`,
+    ? `<img src="${perfil.foto}" alt="">`
+    : mascote() ? `<svg viewBox="0 0 120 120"><use href="#${mascote()}"/></svg>` : (nomePet() || '?').charAt(0).toUpperCase()}</div>`,
   iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
 });
 const marcadorPet = L.marker([area.lat, area.lng], { icon: iconePet(false), zIndexOffset: 1000 }).addTo(map);
@@ -77,7 +82,7 @@ const mapaMini = L.map('mapaMini', {
 }).setView([area.lat, area.lng], 17);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapaMini);
 const miniArea = L.circle([area.lat, area.lng], {
-  color: '#2e7d57', weight: 2, dashArray: '6 6', fillColor: '#2e7d57', fillOpacity: 0.1, radius: area.raio, interactive: false
+  color: corTema('--grama'), weight: 2, dashArray: '6 6', fillColor: corTema('--grama'), fillOpacity: 0.1, radius: area.raio, interactive: false
 }).addTo(mapaMini);
 const miniCasa = L.marker([area.lat, area.lng], { icon: iconeCasa(false), interactive: false, keyboard: false }).addTo(mapaMini);
 const miniPatas = L.layerGroup().addTo(mapaMini);
@@ -92,7 +97,7 @@ function atualizarMini(ponto, fora) {
   const a = areaAtual();
   miniArea.setLatLng([a.lat, a.lng]).setRadius(a.raio);
   miniCasa.setLatLng([a.lat, a.lng]);
-  if (ponto) miniPet.setLatLng([ponto.lat, ponto.lng]).setIcon(iconePet(fora));
+  if (ponto) { miniPet.setIcon(iconePet(fora)); moverSuave(miniPet, [ponto.lat, ponto.lng]); }
   const limites = miniArea.getBounds();
   if (ponto) limites.extend([ponto.lat, ponto.lng]);
   mapaMini.fitBounds(limites.pad(0.25), { animate: false, maxZoom: 18 });
@@ -152,6 +157,7 @@ $('avisoAcao').addEventListener('click', () => {
 // ============================================================ painel
 function renderEstado(e, novo = true) {
   ultimoEstado = e;
+  document.body.classList.remove('carregando');
   const a = areaAtual();
   const temPosicao = e.gpsFix !== false && e.lat && e.lng;
   let dist = temPosicao ? Math.round(map.distance([a.lat, a.lng], [e.lat, e.lng])) : null;
@@ -170,13 +176,15 @@ function renderEstado(e, novo = true) {
   const ponto = saida || (temPosicao ? { lat: e.lat, lng: e.lng } : null);
 
   // distância + régua (meio da régua = limite da área)
-  $('distancia').textContent = dist != null ? `${dist} m` : 'sem GPS';
+  contar($('distancia'), dist != null ? dist : 'sem GPS', { sufixo: ' m' });
   $('distanciaLegenda').textContent = `da casa (limite de ${a.raio} m)`;
   $('reguaPreench').style.width = dist != null ? Math.min(100, (dist / (a.raio * 2)) * 100) + '%' : '0';
 
   // batimentos
   const bpm = e.coleiraNoPet ? (e.batimentos || 0) : 0;
-  $('batimentos').textContent = !e.coleiraNoPet ? '--' : bpm || '...';
+  const bpmAntes = $('batimentos').dataset.valor;
+  contar($('batimentos'), !e.coleiraNoPet ? '--' : bpm || '...', { ms: 400 });
+  if (bpm && bpmAntes && Number(bpmAntes) !== bpm) destacar($('batimentos'), 'tique');
   $('bpmUnidade').textContent = !e.coleiraNoPet ? 'sem leitura' : bpm ? 'bpm' : 'medindo';
   $('cartaoBpm').classList.toggle('ativo', bpm > 0);
   if (bpm > 0) $('cartaoBpm').style.setProperty('--batida', (60 / bpm).toFixed(2) + 's');
@@ -184,6 +192,7 @@ function renderEstado(e, novo = true) {
   desenharBpm();
 
   // coleira
+  if ($('coleira').textContent !== (e.coleiraNoPet ? 'No pet' : 'Removida') && $('coleira').textContent !== '-') destacar($('cartaoColeira'), 'trocou');
   $('coleira').textContent = e.coleiraNoPet ? 'No pet' : 'Removida';
   $('coleira').className = 'sinal-valor pequeno ' + (e.coleiraNoPet ? 'ok' : 'ruim');
   $('cartaoColeira').classList.toggle('removida', !e.coleiraNoPet);
@@ -191,7 +200,7 @@ function renderEstado(e, novo = true) {
 
   // bateria em forma de osso
   const bat = Math.max(0, Math.min(100, e.bateria ?? 0));
-  $('bateria').textContent = e.bateria != null ? `${bat}%` : '-';
+  contar($('bateria'), e.bateria != null ? bat : '-', { sufixo: '%' });
   $('bateria').className = bat <= 15 ? 'ruim' : '';
   $('ossoPreench').setAttribute('width', (120 * bat) / 100);
   $('ossoPreench').style.fill = bat <= 15 ? 'var(--vermelho)' : bat <= 35 ? 'var(--ambar)' : 'var(--menta)';
@@ -208,7 +217,8 @@ function renderEstado(e, novo = true) {
 
   // mapa: dentro da área, a posição sincronizada; fora, o último ponto registrado
   if (ponto) {
-    marcadorPet.setLatLng([ponto.lat, ponto.lng]).setIcon(iconePet(fora));
+    marcadorPet.setIcon(iconePet(fora));
+    moverSuave(marcadorPet, [ponto.lat, ponto.lng]);
     marcadorPet.bindPopup(fora
       ? `<b>${nomePet()}</b> saiu da área segura às ${fmtHora(saida.em)}.<br>Último ponto registrado pela coleira.`
       : `<b>${nomePet()}</b> está dentro da área segura`);
@@ -230,8 +240,10 @@ function adicionarPegada(lat, lng) {
     const dy = lat - ult.lat, dx = (lng - ult.lng) * Math.cos((lat * Math.PI) / 180);
     rumo = (Math.atan2(dx, dy) * 180) / Math.PI;
   }
+  trilha.forEach((p) => { p.nova = false; });
   trilha.push({ lat, lng, rumo });
   if (trilha.length > 30) trilha.shift();
+  if (trilha.length > 1) trilha[trilha.length - 2].nova = true;   // a pegada que acabou de aparecer
   desenharPatas(camadaPatas);
   desenharPatas(miniPatas);
 }
@@ -241,10 +253,11 @@ function desenharPatas(camada) {
   trilha.slice(0, -1).forEach((p, i, lista) => {
     const opac = 0.25 + 0.7 * ((i + 1) / lista.length);
     const lado = i % 2 ? 4 : -4;
+    const nova = i === lista.length - 1 && p.nova;
     L.marker([p.lat, p.lng], {
       interactive: false, keyboard: false,
       icon: L.divIcon({
-        className: 'mk-pata', iconSize: [16, 16], iconAnchor: [8, 8],
+        className: 'mk-pata' + (nova ? ' nova' : ''), iconSize: [16, 16], iconAnchor: [8, 8],
         html: `<svg style="opacity:${opac};transform:rotate(${p.rumo}deg) translateX(${lado}px)"><use href="#i-pata"/></svg>`
       })
     }).addTo(camada);
@@ -252,6 +265,8 @@ function desenharPatas(camada) {
 }
 
 const semSinal = (e) => e?.atualizadoEm && (Date.now() - e.atualizadoEm.getTime()) / 1000 > SEM_SINAL_SEGUNDOS;
+
+const ICONE_ESTADO = { dentro: 'i-casa', fora: 'i-corre', 'sem-sinal': 'i-relogio', aguardando: 'i-mapa', encontrado: 'i-check', perdido: 'i-megafone' };
 
 // encontro ainda não encerrado = alguém confirmou pelo QR que está com o pet / viu o pet
 const encontroAtivo = () => encontros.find((x) => x.status !== 'resolvido') || null;
@@ -284,8 +299,12 @@ function atualizarStatus(e, fora, dist) {
     texto = `A página do QR está pedindo ajuda a quem encontrar ${nomePet()}.`
       + (saida ? ` Saiu da área às ${fmtHora(saida.em)}.` : '');
   }
+  const estadoAntes = document.body.dataset.estado;
+  const rotuloAntes = $('etiquetaEstado').textContent;
   document.body.dataset.estado = estado;
   $('etiquetaEstado').textContent = etiqueta;
+  usar($('iconeEstado'), ICONE_ESTADO[perfil.perdido && !enc ? 'perdido' : estado] || 'i-mapa');
+  if (estadoAntes !== 'aguardando' && rotuloAntes !== etiqueta) destacar(document.querySelector('.estado'), 'trocou');
   $('estadoMenu').textContent = etiqueta;
   $('status').textContent = texto;
 
@@ -395,6 +414,8 @@ function iconeSvg(id) {
   u.setAttribute('href', '#' + id); s.append(u); return s;
 }
 
+const alertasVistos = new Set();
+let alertasCarregados = false;
 function renderAlertas(lista) {
   const ul = $('alertas');
   ul.replaceChildren();
@@ -406,6 +427,9 @@ function renderAlertas(lista) {
     const [classe, icone] = TIPO[a.tipo] || ['', 'i-sino'];
     const li = document.createElement('li');
     li.className = classe;
+    const chave = `${a.tipo}|${a.data?.getTime?.() || ''}|${a.mensagem}`;
+    if (alertasCarregados && !alertasVistos.has(chave)) li.classList.add('chegou');   // alerta novo entra deslizando
+    alertasVistos.add(chave);
     const ic = document.createElement('span'); ic.className = 'icone'; ic.append(iconeSvg(icone));
     const msg = document.createElement('span'); msg.className = 'msg'; msg.textContent = a.mensagem;
     if (a.lat && a.lng) {
@@ -423,6 +447,7 @@ function renderAlertas(lista) {
   $('alertasResumo').replaceChildren(...[...ul.children].slice(0, 3).map((li) => {
     return li.cloneNode(true);
   }));
+  alertasCarregados = true;
   ultimaLista = lista;
   atualizarSelo();
   verificarAvistamentos(lista);
@@ -434,8 +459,10 @@ let vistoAte = (() => { try { return +localStorage.getItem('coleira-alertas-vist
 function atualizarSelo() {
   if (secaoAtual === 'alertas') marcarAlertasLidos();
   const n = ultimaLista.filter((a) => a.data && a.data.getTime() > vistoAte).length;
+  const antes = $('seloAlertas').textContent;
   $('seloAlertas').hidden = !n;
   $('seloAlertas').textContent = n > 9 ? '9+' : n;
+  if (n && String(antes) !== $('seloAlertas').textContent) destacar($('seloAlertas'), 'pulou');
 }
 function marcarAlertasLidos() {
   const maisNovo = Math.max(Date.now(), ...ultimaLista.map((a) => a.data?.getTime() || 0));
@@ -806,6 +833,102 @@ document.querySelectorAll('[data-sim]').forEach((b) => b.addEventListener('click
   passoSimulador(true).catch(console.error);
 }));
 
+// ============================================================ aparência (Configurações)
+function corTema(nome) { return getComputedStyle(document.documentElement).getPropertyValue(nome).trim() || '#2e7d57'; }
+// mascote que aparece quando o pet não tem foto
+function mascote() {
+  const m = layout.mascote === 'auto'
+    ? ({ gato: 'gato', outro: 'inicial' }[perfil.especie] || 'cao')
+    : layout.mascote;
+  return m === 'inicial' ? null : 'i-' + m;
+}
+function svgMascote() {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 120 120'); svg.setAttribute('class', 'mascote');
+  const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  u.setAttribute('href', '#' + mascote());
+  svg.append(u);
+  return svg;
+}
+window.addEventListener('layout-mudou', (ev) => {
+  layout = ev.detail;
+  const c = corTema('--grama');
+  corDaBarra(c);
+  circuloArea.setStyle({ color: c, fillColor: c });
+  miniArea.setStyle({ color: c, fillColor: c });
+  aplicarPerfil();
+});
+
+function preencherLayout() {
+  const f = $('formLayout');
+  f.querySelector(`input[name="tema"][value="${layout.tema}"]`).checked = true;
+  f.querySelector(`input[name="mascote"][value="${layout.mascote}"]`).checked = true;
+  ['topo', 'patas', 'titulos', 'texto', 'movimento'].forEach((k) => {
+    const cx = f.querySelector(`input[name="${k}"]`);
+    cx.checked = layout[k] === cx.value;
+  });
+  f.querySelector('.letra').textContent = (nomePet() || '?').charAt(0).toUpperCase();
+}
+const DESLIGADO = { topo: 'suave', patas: 'nao', titulos: 'sistema', texto: 'normal', movimento: 'normal' };
+$('formLayout').addEventListener('change', async () => {
+  const f = $('formLayout');
+  const novo = { ...layout };
+  novo.tema = f.querySelector('input[name="tema"]:checked')?.value || 'parque';
+  novo.mascote = f.querySelector('input[name="mascote"]:checked')?.value || 'auto';
+  ['topo', 'patas', 'titulos', 'texto', 'movimento'].forEach((k) => {
+    const cx = f.querySelector(`input[name="${k}"]`);
+    novo[k] = cx.checked ? cx.value : DESLIGADO[k];
+  });
+  aplicarLayout(novo);
+  try { await salvarLayout(novo); $('dicaLayout').textContent = 'Salvo.'; $('dicaLayout').className = 'dica salvo'; }
+  catch (err) { $('dicaLayout').textContent = 'Aplicado aqui, mas não foi possível salvar na conta: ' + err.message; $('dicaLayout').className = 'dica erro'; }
+});
+$('btnLayoutPadrao').addEventListener('click', async () => {
+  aplicarLayout({ ...LAYOUT_PADRAO });
+  preencherLayout();
+  try { await salvarLayout(LAYOUT_PADRAO); $('dicaLayout').textContent = 'Aparência padrão de volta.'; $('dicaLayout').className = 'dica salvo'; } catch { /* aplicado aqui */ }
+});
+
+// ============================================================ dados do tutor (Configurações)
+let tutor = {};
+async function carregarTutor() {
+  try { tutor = await lerTutor(); } catch (err) { console.error(err); tutor = {}; }
+  layout = lerLayout(); preencherLayout();
+  $('tutorNome').value = tutor.nome || '';
+  $('perfilTel').value = telefoneBonito(tutor.telefone || perfil.telefone || '');
+  $('tutorMostrarTel').checked = tutor.mostrarTelefone ?? true;
+  $('linhaConta').hidden = !tutor.email;
+  $('tutorEmail').textContent = tutor.email || '';
+}
+['tutorNome', 'perfilTel', 'tutorMostrarTel'].forEach((id) => $(id).addEventListener('input', () => {
+  $('dicaTutor').className = 'dica'; $('dicaTutor').textContent = 'Alterações não salvas';
+}));
+$('formTutor').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const tel = $('perfilTel').value.replace(/\D/g, '');
+  if (tel && tel.length < 10) {
+    $('dicaTutor').className = 'dica erro'; $('dicaTutor').textContent = 'Confira o telefone: use DDD + número.';
+    $('perfilTel').focus(); return;
+  }
+  $('btnSalvarTutor').disabled = true;
+  try {
+    tutor = { ...tutor, ...(await salvarTutor({ nome: $('tutorNome').value.trim(), telefone: tel, mostrarTelefone: $('tutorMostrarTel').checked })) };
+    // a página do QR mostra o WhatsApp só se o tutor permitir
+    await gravarPerfil({ telefone: $('tutorMostrarTel').checked ? tel : '' });
+    $('dicaTutor').className = 'dica salvo';
+    $('dicaTutor').textContent = $('tutorMostrarTel').checked ? 'Salvo. O WhatsApp aparece na página do QR.' : 'Salvo. O WhatsApp não aparece na página do QR.';
+    aplicarPerfil();
+  } catch (err) {
+    console.error(err);
+    $('dicaTutor').className = 'dica erro'; $('dicaTutor').textContent = 'Não foi possível salvar: ' + err.message;
+  }
+  $('btnSalvarTutor').disabled = false;
+});
+$('btnTrocarSenha').addEventListener('click', async () => {
+  try { const e = await enviarTrocaSenha(); $('dicaTutor').className = 'dica salvo'; $('dicaTutor').textContent = `Enviamos um link para ${e} criar uma nova senha.`; }
+  catch (err) { $('dicaTutor').className = 'dica erro'; $('dicaTutor').textContent = err.message; }
+});
+
 // ============================================================ perfil, QR e modo perdido
 function aplicarPerfil() {
   const enc = encontroAtivo();
@@ -835,6 +958,7 @@ function aplicarPerfil() {
   document.querySelectorAll('[data-avatar]').forEach((el) => {
     el.replaceChildren();
     if (perfil.foto) { const img = document.createElement('img'); img.src = perfil.foto; img.alt = ''; el.append(img); }
+    else if (mascote()) el.append(svgMascote());
     else el.textContent = (nomePet() || '?').charAt(0).toUpperCase();
   });
   marcadorPet.setIcon(iconePet(document.body.dataset.estado === 'fora'));
@@ -846,15 +970,32 @@ function aplicarPerfil() {
 
 function preencherPerfil() {
   $('perfilNome').value = perfil.nome || PET_NOME;
-  $('perfilTel').value = telefoneBonito(perfil.telefone);
   $('perfilRecado').value = perfil.recado || '';
+  $('perfilRaca').value = perfil.raca || '';
+  $('perfilCor').value = perfil.cor || '';
+  $('perfilPorte').value = perfil.porte || '';
+  $('perfilCuidados').value = perfil.cuidados || '';
+  const esp = document.querySelector(`#formPerfil input[name="especie"][value="${perfil.especie || 'cao'}"]`);
+  if (esp) esp.checked = true;
   mostrarFoto(perfil.foto);
+}
+let ficha = {};
+async function carregarFicha() {
+  try { ficha = await lerFicha(); } catch (err) { console.error(err); ficha = {}; }
+  $('fichaNascimento').value = ficha.nascimento || '';
+  $('fichaPeso').value = ficha.peso ?? '';
+  $('fichaSexo').value = ficha.sexo || '';
+  $('fichaCastrado').checked = !!ficha.castrado;
+  $('fichaMicrochip').value = ficha.microchip || '';
+  $('fichaVet').value = ficha.veterinario || '';
+  $('fichaVetTel').value = ficha.vetTelefone || '';
 }
 
 function mostrarFoto(url) {
   $('perfilFotoPrev').hidden = !url;
   if (url) $('perfilFotoPrev').src = url;
   document.querySelector('.foto-escolher .foto-padrao').style.display = url ? 'none' : '';
+  if (mascote()) $('mascoteForm').setAttribute('href', '#' + mascote());
 }
 
 function marcarPerfilSujo() {
@@ -862,7 +1003,12 @@ function marcarPerfilSujo() {
   $('dicaPerfil').className = 'dica';
   $('dicaPerfil').textContent = 'Alterações não salvas';
 }
-['perfilNome', 'perfilTel', 'perfilRecado'].forEach((id) => $(id).addEventListener('input', marcarPerfilSujo));
+['perfilNome', 'perfilRecado', 'perfilRaca', 'perfilCor', 'perfilPorte', 'perfilCuidados', 'fichaNascimento', 'fichaPeso', 'fichaSexo',
+  'fichaCastrado', 'fichaMicrochip', 'fichaVet', 'fichaVetTel'].forEach((id) => $(id).addEventListener('input', marcarPerfilSujo));
+document.querySelectorAll('#formPerfil input[name="especie"]').forEach((r) => r.addEventListener('change', () => {
+  marcarPerfilSujo();
+  if (layout.mascote === 'auto') { perfil = { ...perfil, especie: r.value }; mostrarFoto(fotoNova !== undefined ? fotoNova : perfil.foto); }
+}));
 
 $('perfilFoto').addEventListener('change', async () => {
   const arq = $('perfilFoto').files[0];
@@ -885,25 +1031,31 @@ async function gravarPerfil(campos) {
 
 $('formPerfil').addEventListener('submit', async (ev) => {
   ev.preventDefault();
-  const tel = $('perfilTel').value.replace(/\D/g, '');
-  if (tel && tel.length < 10) {
-    $('dicaPerfil').className = 'dica';
-    $('dicaPerfil').textContent = 'Confira o telefone: use DDD + número.';
-    $('perfilTel').focus();
-    return;
+  const peso = $('fichaPeso').value === '' ? null : Number($('fichaPeso').value);
+  if (peso != null && !(peso > 0 && peso < 120)) {
+    $('dicaPerfil').className = 'dica erro'; $('dicaPerfil').textContent = 'Confira o peso (em kg).'; $('fichaPeso').focus(); return;
   }
   const campos = {
     nome: $('perfilNome').value.trim() || PET_NOME,
-    telefone: tel,
+    especie: document.querySelector('#formPerfil input[name="especie"]:checked')?.value || 'cao',
+    raca: $('perfilRaca').value.trim(),
+    cor: $('perfilCor').value.trim(),
+    porte: $('perfilPorte').value,
+    cuidados: $('perfilCuidados').value.trim(),
     recado: $('perfilRecado').value.trim(),
     foto: fotoNova !== undefined ? fotoNova : perfil.foto || ''
   };
   $('btnSalvarPerfil').disabled = true;
   try {
     await gravarPerfil(campos);
+    ficha = await salvarFicha({
+      nascimento: $('fichaNascimento').value, peso, sexo: $('fichaSexo').value, castrado: $('fichaCastrado').checked,
+      microchip: $('fichaMicrochip').value.replace(/\D/g, ''), veterinario: $('fichaVet').value.trim(), vetTelefone: $('fichaVetTel').value.replace(/\D/g, '')
+    });
     formSujo = false; fotoNova = undefined;
     $('dicaPerfil').className = 'dica salvo';
-    $('dicaPerfil').textContent = db ? 'Perfil salvo. A página do QR já mostra os novos dados.' : 'Perfil salvo neste navegador (modo simulação).';
+    $('dicaPerfil').textContent = (db ? 'Salvo. A página do QR já mostra os novos dados.' : 'Salvo neste navegador (modo simulação).')
+      + (ficha.nascimento && idade(ficha.nascimento) ? ` ${nomePet()} tem ${idade(ficha.nascimento)}.` : '');
     aplicarPerfil();
   } catch (err) {
     console.error(err);
@@ -1129,8 +1281,9 @@ function botaoLink(texto, href, icone, cls = 'pilula leve') {
   return a;
 }
 
+const encontrosVistos = new Set();
 function cartaoEncontro(enc, compacto) {
-  const c = el('article', 'encontro ' + enc.status);
+  const c = el('article', 'encontro ' + enc.status + (encontrosVistos.has(enc.id) ? '' : ' chegou'));
   c.dataset.id = enc.id;
 
   const topo = el('div', 'encontro-topo');
@@ -1243,6 +1396,7 @@ function renderEncontros() {
     if (rascunhos[i.dataset.resposta]) i.value = rascunhos[i.dataset.resposta];
     if (foco && i.dataset.resposta === foco && !document.activeElement?.dataset?.resposta) i.focus();
   });
+  encontros.forEach((e) => encontrosVistos.add(e.id));
   desenharEncontrosNoMapa();
   aplicarPerfil();           // o status do pet muda para "Pet encontrado" (ou volta) junto com os encontros
 }
@@ -1332,8 +1486,40 @@ function sincronizarAlertaBairro(perdido) {
   comunidade?.sincronizarPerdido(perdido).catch((err) => console.error('bairro', err));
 }
 
+// ============================================================ app instalável (PWA)
+registrarServiceWorker((confirmar) => mostrarAviso('Há uma versão nova do site.', 'Atualizar', confirmar, 600000));
+corDaBarra(corTema('--grama'));
+acompanharInstalacao(({ instalado, podeInstalar, ios }) => {
+  $('btnInstalar').hidden = !podeInstalar;
+  $('btnInstalar2').hidden = !podeInstalar;
+  $('appIOS').hidden = !ios;
+  $('cartaoApp').classList.toggle('instalado', instalado);
+  $('appTexto').textContent = instalado
+    ? 'Você está usando o app instalado. Ele abre pela tela inicial e mostra os últimos dados mesmo sem internet.'
+    : ios ? 'No iPhone a instalação é pelo Safari, em três toques:'
+      : podeInstalar ? 'Instale para abrir pela tela inicial, em tela cheia, e ver os últimos dados mesmo sem internet.'
+        : 'Abra este site no Chrome (Android ou computador) ou no Safari (iPhone) para instalar como app.';
+});
+const pedirInstalacao = async () => { if (await instalar()) mostrarAviso('App instalado. Ele está na sua tela inicial.', null, null, 6000); };
+$('btnInstalar').addEventListener('click', pedirInstalacao);
+$('btnInstalar2').addEventListener('click', pedirInstalacao);
+
+// sem internet: o app continua aberto com os últimos dados e avisa
+var conexaoAntes = null;   // var: definirConexao pode rodar antes desta linha
+window.addEventListener('offline', () => {
+  const el = document.querySelector('[data-conexao]');
+  if (el.title && el.title !== 'Sem internet') conexaoAntes = [el.title, [...el.classList].find((c) => c !== 'conexao' && c !== 'compacta')];
+  definirConexao('Sem internet', 'erro');
+  mostrarAviso('Sem internet. Mostrando os últimos dados salvos.', null, null, 6000);
+});
+setTimeout(() => { if (!navigator.onLine) window.dispatchEvent(new Event('offline')); }, 0);
+window.addEventListener('online', () => {
+  if (conexaoAntes) definirConexao(...conexaoAntes);
+  mostrarAviso('Internet de volta.', null, null, 3000);
+});
+
 // ============================================================ navegação (barra lateral)
-const SECOES = ['inicio', 'mapa', 'saude', 'alertas', 'perdido', 'comunidade', 'testes'];
+const SECOES = ['inicio', 'mapa', 'saude', 'alertas', 'perdido', 'comunidade', 'ajustes', 'testes'];
 let secaoAtual = null, mapaJaAberto = false;
 
 function irPara(sec, novaEntrada = false) {
@@ -1385,6 +1571,8 @@ document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') fecharMe
 
 // ============================================================ conexão
 function definirConexao(texto, classe) {
+  // sem internet o selo continua dizendo isso; o estado real volta quando a conexão voltar
+  if (!navigator.onLine && texto !== 'Sem internet') { conexaoAntes = [texto, classe]; texto = 'Sem internet'; classe = 'erro'; }
   document.querySelectorAll('[data-conexao]').forEach((el) => {
     el.className = 'conexao ' + classe + (el.classList.contains('compacta') ? ' compacta' : '');
     el.title = texto;
@@ -1422,6 +1610,7 @@ async function conectarFirebase() {
   fs = c.fs; db = c.db;
   mostrarConta(user.email);
   mostrarVinculo(acesso.coleira);
+  carregarTutor(); carregarFicha();
   iniciarEncontros().then(() => ouvirEncontros((lista) => { encontros = lista; renderEncontros(); }));
   iniciarComunidadePainel();
 
@@ -1472,6 +1661,7 @@ new ResizeObserver(() => { map.invalidateSize(); desenharBpm(); }).observe($('ma
 
 if (!configurado) {
   carregarSaudeLocal();
+  carregarTutor(); carregarFicha();
   iniciarEncontros().then(() => ouvirEncontros((lista) => { encontros = lista; renderEncontros(); }));
   iniciarComunidadePainel();
 }

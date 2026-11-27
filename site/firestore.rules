@@ -8,6 +8,7 @@ rules_version = '2';
 //            dela no site e ela vira a "coleira" em acesso/{pet}
 //   achador  quem escaneia o QR; login anônimo automático (sem dados pessoais)
 //   vizinho  conta com e-mail e senha que entrou na rede (vizinhos/{uid})
+//   tutores/{uid} e pets/{pet}/config/ficha guardam dados pessoais: só o dono lê
 //
 // Princípios:
 //   - a posição da coleira, a saúde e os alertas só são lidos pelo tutor e
@@ -66,10 +67,14 @@ service cloud.firestore {
     // ---------------------------------------------------------------- perfil público (página do QR)
     function perfilValido() {
       let d = request.resource.data;
-      return d.keys().hasOnly(['nome', 'foto', 'telefone', 'recado', 'perdido', 'perdidoDesde', 'encontrado', 'atualizadoEm'])
+      return d.keys().hasOnly(['nome', 'foto', 'telefone', 'recado', 'perdido', 'perdidoDesde', 'encontrado', 'atualizadoEm',
+                               'especie', 'raca', 'cor', 'porte', 'cuidados'])
         && texto(d.get('nome', ''), 40) && texto(d.get('foto', ''), 400000)
         && texto(d.get('telefone', ''), 20) && texto(d.get('recado', ''), 300)
-        && d.get('perdido', false) is bool;
+        && d.get('perdido', false) is bool
+        && d.get('especie', 'cao') in ['cao', 'gato', 'outro']
+        && texto(d.get('raca', ''), 40) && texto(d.get('cor', ''), 80)
+        && d.get('porte', '') in ['', 'pequeno', 'medio', 'grande'] && texto(d.get('cuidados', ''), 120);
     }
     // quem achou marca "encontrado" apontando para o encontro que ELE criou; sem nome nem telefone
     function encontradoPeloAutor(pet) {
@@ -87,6 +92,16 @@ service cloud.firestore {
             && request.resource.data.perdido is bool && request.resource.data.get('encontrado', null) == null)
         || (logado() && soMudou(['encontrado']) && encontradoPeloAutor(pet));
       allow delete: if ehDono(pet);
+    }
+
+    // ---------------------------------------------------------------- dados do tutor (só ele lê e grava)
+    match /tutores/{uid} {
+      allow read, delete: if contaReal() && request.auth.uid == uid;
+      allow create, update: if contaReal() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['nome', 'telefone', 'mostrarTelefone', 'layout', 'atualizadoEm'])
+        && texto(request.resource.data.get('nome', ''), 60) && texto(request.resource.data.get('telefone', ''), 20)
+        && request.resource.data.get('mostrarTelefone', true) is bool
+        && (request.resource.data.get('layout', {}) is map && request.resource.data.get('layout', {}).size() <= 10);
     }
 
     // ---------------------------------------------------------------- dados privados do pet

@@ -74,6 +74,29 @@ Coleções: `perfis/{pet}` (perfil público e o campo `perdido`), `encontros/{id
 
 **Privacidade:** a página do QR é pública e mostra o telefone cadastrado. Coloque só o número que você aceita divulgar. Nome e telefone de quem encontrou ficam visíveis apenas para o tutor.
 
+## App no celular (PWA)
+
+O site pode ser instalado como app, sem loja:
+
+- **Android e computador (Chrome ou Edge):** botão **Instalar app** na barra lateral e em Configurações.
+- **iPhone (Safari):** Compartilhar > Adicionar à Tela de Início (o passo a passo aparece em Configurações).
+
+Instalado, ele abre pela tela inicial em tela cheia, com o ícone da Coleira, e tem atalhos para Mapa, Pet perdido e Rede do bairro (toque longo no ícone, no Android). Sem internet, abre com os últimos dados salvos e mostra "Sem internet" até a conexão voltar.
+
+Arquivos: `site/manifest.webmanifest` (nome, cores, ícones), `site/sw.js` (guarda o site para abrir offline: arquivos do site pela rede primeiro, bibliotecas e mapa pela cópia salva; dados do Firebase nunca passam por ele), `site/pwa.js` (instalação e aviso de versão nova) e `site/icones/`. Com Firebase, os dados ficam guardados no aparelho pelo próprio Firestore (`persistentLocalCache`). Ao publicar uma versão nova, o app mostra "Há uma versão nova do site. Atualizar".
+
+Para testar localmente sem o service worker, abra com `?semsw` no endereço. Próximo passo: notificações push com o app fechado (Firebase Cloud Messaging + Cloud Functions, plano Blaze).
+
+## Configurações
+
+No menu **Configurações** o tutor edita:
+
+- **Pet:** foto, nome, espécie (cão, gato ou outro), raça, porte, cor e sinais, cuidados importantes e recado. Isso aparece na página do QR, para quem encontrar confirmar que é o pet certo. Em **Só você vê** ficam nascimento (o site calcula a idade), peso, sexo, castrado, microchip e veterinário, guardados em `pets/{pet}/config/ficha`.
+- **Você:** nome, WhatsApp e se o WhatsApp aparece ou não na página do QR. Com Firebase, mostra o e-mail da conta e envia o link para trocar a senha. Fica em `tutores/{uid}`, que só o próprio tutor lê.
+- **Aparência:** quatro paletas (Parque, Lavanda, que é a da primeira versão, Céu e Caramelo), o que mostrar quando não há foto (mascote cão ou gato pela espécie, ou a inicial), topo colorido na cor do estado, fundo com patinhas, títulos com letra arredondada, texto maior e reduzir animações. Muda na hora, fica salvo no navegador e, com Firebase, na conta (vale em outro aparelho).
+
+Depois de atualizar o site, publique de novo o `site/firestore.rules` no Firebase: ele inclui `tutores` e os campos novos do perfil.
+
 ## Rede de alerta do bairro
 
 Vizinhos que ajudam a trazer pets de volta. Fica no menu **Rede do bairro** do painel e em `bairro.html`, para quem não tem a coleira (o link vai no rodapé da página do QR e no botão **Convidar vizinhos**).

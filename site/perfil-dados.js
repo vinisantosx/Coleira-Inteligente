@@ -20,7 +20,10 @@ import { firebaseConfig, PET_ID, PET_NOME } from './firebase-config.js';
 const FIREBASE_VERSAO = '10.12.2';
 export const configurado = !!firebaseConfig.apiKey && firebaseConfig.apiKey !== 'COLE_AQUI';
 
-export const PERFIL_PADRAO = { nome: PET_NOME, foto: '', telefone: '', recado: '', perdido: false, perdidoDesde: null, encontrado: null };
+export const PERFIL_PADRAO = {
+  nome: PET_NOME, foto: '', telefone: '', recado: '', perdido: false, perdidoDesde: null, encontrado: null,
+  especie: 'cao', raca: '', cor: '', porte: '', cuidados: ''
+};
 
 // ?emulador na URL (só em localhost) liga o site aos emuladores do Firebase
 function usarEmulador() {
@@ -40,7 +43,12 @@ export function abrirFirestore() {
         import(`${base}/firebase-app.js`), import(`${base}/firebase-firestore.js`), import(`${base}/firebase-auth.js`)
       ]);
       const inst = app.initializeApp(firebaseConfig);
-      const db = fs.getFirestore(inst), auth = au.getAuth(inst);
+      // dados guardados no aparelho: o app abre com a última informação mesmo sem internet
+      let db;
+      try {
+        db = fs.initializeFirestore(inst, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) });
+      } catch (err) { console.warn('sem cache offline do Firestore', err); db = fs.getFirestore(inst); }
+      const auth = au.getAuth(inst);
       if (usarEmulador()) {          // só para testes locais (npx firebase emulators:start)
         fs.connectFirestoreEmulator(db, '127.0.0.1', 8089);
         au.connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });

@@ -28,7 +28,7 @@ function pegarLocal() {
 
 const MOLDE = `
 <section class="cartao bz-entrar" data-bz="entrar" hidden>
-  <h2>Entre na rede de alerta do bairro</h2>
+  <h2><svg class="h-icone" aria-hidden="true"><use href="#i-vizinhos"/></svg>Entre na rede de alerta do bairro</h2>
   <p class="dica">Quando um pet some perto de você, você recebe o alerta e pode ajudar a procurar. Quando for o seu, os vizinhos ajudam você.</p>
   <ul class="bz-garantias">
     <li><span><b>Ninguém vê onde você mora.</b> Guardamos só uma área de cerca de 1 km e o seu apelido.</span></li>
@@ -41,8 +41,8 @@ const MOLDE = `
       <label class="campo">Bairro <input name="bairro" maxlength="50" placeholder="Ex.: Centro"></label>
     </div>
     <div class="bz-local">
-      <button type="button" class="pilula leve" data-bz="btnArea" hidden>Usar a região da área segura</button>
-      <button type="button" class="pilula leve" data-bz="btnLocal">Usar minha localização aproximada</button>
+      <button type="button" class="pilula leve" data-bz="btnArea" hidden><svg aria-hidden="true"><use href="#i-casa"/></svg>Usar a região da área segura</button>
+      <button type="button" class="pilula leve" data-bz="btnLocal"><svg aria-hidden="true"><use href="#i-mapa"/></svg>Usar minha localização aproximada</button>
       <span class="dica" data-bz="localTexto">Escolha uma opção para marcar sua região.</span>
     </div>
     <label class="campo">Receber alertas num raio de
@@ -50,7 +50,7 @@ const MOLDE = `
     </label>
     <label class="bz-check"><input type="checkbox" name="regras"> <span>Aceito as regras da rede: não pedir nem oferecer dinheiro, não divulgar o endereço de ninguém e só publicar alertas verdadeiros.</span></label>
     <div class="bz-linha">
-      <button class="pilula primario" type="submit"><span data-bz="txtEntrar">Entrar na rede</span></button>
+      <button class="pilula primario" type="submit"><svg aria-hidden="true"><use href="#i-vizinhos"/></svg><span data-bz="txtEntrar">Entrar na rede</span></button>
       <button class="pilula leve" type="button" data-bz="btnCancelarEdicao" hidden>Cancelar</button>
     </div>
     <p class="qr-status" data-bz="erroEntrar" role="status"></p>
@@ -61,7 +61,7 @@ const MOLDE = `
   <div class="bz-principal">
     <section class="cartao bz-meu" data-bz="meuAlerta" hidden></section>
     <section class="cartao bz-alertas">
-      <h2>Pets perdidos perto de você</h2>
+      <h2><svg class="h-icone" aria-hidden="true"><use href="#i-megafone"/></svg>Pets perdidos perto de você</h2>
       <p class="dica" data-bz="resumo"></p>
       <div class="bz-mapa" data-bz="mapa" role="img" aria-label="Mapa com as áreas aproximadas dos pets perdidos"></div>
       <div class="bz-lista" data-bz="lista"></div>
@@ -69,14 +69,14 @@ const MOLDE = `
   </div>
   <div class="bz-lateral">
     <section class="cartao bz-regiao">
-      <h2>Na sua região</h2>
+      <h2><svg class="h-icone" aria-hidden="true"><use href="#i-coracao"/></svg>Na sua região</h2>
       <div class="bz-numeros">
         <div><b data-bz="numVoltaram">0</b><span>pets voltaram para casa com ajuda da rede nos últimos 30 dias</span></div>
         <div><b data-bz="numAtivos">0</b><span>sendo procurados agora</span></div>
       </div>
     </section>
     <section class="cartao bz-eu">
-      <h2>Minha participação</h2>
+      <h2><svg class="h-icone" aria-hidden="true"><use href="#i-vizinhos"/></svg>Minha participação</h2>
       <p data-bz="euTexto"></p>
       <label class="bz-check"><input type="checkbox" data-bz="chkNotif"> <span>Avisar neste aparelho quando um pet sumir perto de mim</span></label>
       <label class="bz-check" data-bz="linhaAuto" hidden><input type="checkbox" data-bz="chkAuto"> <span>Publicar o alerta do meu pet sozinho quando eu ativar o modo perdido</span></label>
@@ -84,10 +84,10 @@ const MOLDE = `
         <button type="button" class="pilula leve" data-bz="btnEditar">Editar participação</button>
         <button type="button" class="pilula leve" data-bz="btnSair">Sair da rede</button>
       </div>
-      <a class="pilula leve bz-convidar" data-bz="convidar" target="_blank" rel="noopener">Convidar vizinhos</a>
+      <a class="pilula leve bz-convidar" data-bz="convidar" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-zap"/></svg>Convidar vizinhos</a>
     </section>
     <section class="cartao bz-seguranca">
-      <h2>Segurança contra golpes</h2>
+      <h2><svg class="h-icone" aria-hidden="true"><use href="#i-cadeado"/></svg>Segurança contra golpes</h2>
       <ul>
         <li>Ninguém da rede pede dinheiro. <b>Nunca pague nada adiantado</b>, nem "taxa de transporte".</li>
         <li>Para confirmar que a pessoa está mesmo com o pet, peça <b>uma foto agora</b> ou um detalhe que só você sabe.</li>
@@ -302,15 +302,15 @@ export async function montarComunidade(raiz, opcoes = {}) {
         <p class="bz-ajudando">${ajud.length ? `${ajud.length} ${ajud.length === 1 ? 'vizinho procurando' : 'vizinhos procurando'}: ${ajud.slice(0, 4).map((x) => esc(x.apelido)).join(', ')}${ajud.length > 4 ? '...' : ''}` : 'Ninguém procurando ainda'}</p>
         ${meu ? '' : `
         <div class="bz-acoes">
-          <button type="button" class="pilula ${euAjudo ? 'ok-btn' : 'leve'}" data-acao="procurar">${euAjudo ? '✓ Estou procurando' : 'Estou procurando'}</button>
-          <button type="button" class="pilula leve" data-acao="vi">Vi este pet</button>
-          <a class="pilula primario" data-acao="comigo" target="_blank" rel="noopener">Está comigo</a>
-          <a class="pilula leve" data-acao="compartilhar" target="_blank" rel="noopener">Compartilhar alerta</a>
+          <button type="button" class="pilula ${euAjudo ? 'ok-btn' : 'leve'}" data-acao="procurar"><svg aria-hidden="true"><use href="#i-vizinhos"/></svg>${euAjudo ? '✓ Estou procurando' : 'Estou procurando'}</button>
+          <button type="button" class="pilula leve" data-acao="vi"><svg aria-hidden="true"><use href="#i-olho"/></svg>Vi este pet</button>
+          <a class="pilula primario" data-acao="comigo" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-check"/></svg>Está comigo</a>
+          <a class="pilula leve" data-acao="compartilhar" target="_blank" rel="noopener"><svg aria-hidden="true"><use href="#i-zap"/></svg>Compartilhar alerta</a>
         </div>
         <form class="bz-vi" data-acao="formVi" ${viAberto === a.pet ? '' : 'hidden'}>
           <label class="campo">Onde e como estava? (opcional)<textarea name="nota" rows="2" maxlength="200" placeholder="Ex.: correndo perto da praça, sentido avenida"></textarea></label>
           <p class="dica">Enviamos a sua localização de agora. Só o tutor vê o ponto exato.</p>
-          <div class="bz-linha"><button class="pilula primario" type="submit">Enviar onde vi</button>
+          <div class="bz-linha"><button class="pilula primario" type="submit"><svg aria-hidden="true"><use href="#i-mapa"/></svg>Enviar onde vi</button>
           <button class="pilula leve" type="button" data-acao="fecharVi">Cancelar</button></div>
           <p class="qr-status" data-acao="statusVi" role="status"></p>
         </form>
@@ -372,7 +372,7 @@ export async function montarComunidade(raiz, opcoes = {}) {
           <textarea name="descricao" rows="2" maxlength="200" placeholder="Ex.: porte médio, caramelo, coleira laranja. É medroso."></textarea>
         </label>
         <p class="dica">Não coloque endereço, valor do pet nem recompensa em dinheiro: isso atrai golpistas.</p>
-        <button type="button" class="pilula perigo" data-bz="btnPublicar" ${perdido ? '' : 'disabled'}>Publicar alerta no bairro</button>
+        <button type="button" class="pilula perigo" data-bz="btnPublicar" ${perdido ? '' : 'disabled'}><svg aria-hidden="true"><use href="#i-megafone"/></svg>Publicar alerta no bairro</button>
         <p class="qr-status" data-bz="statusMeu" role="status"></p>`;
       const ta = box.querySelector('textarea[name="descricao"]');
       ta.value = rascunho ?? pet.descricao?.() ?? '';
@@ -390,10 +390,10 @@ export async function montarComunidade(raiz, opcoes = {}) {
       <h3>Avistamentos <small>(só você vê o ponto exato)</small></h3>
       <ul class="bz-avist">${avs.length ? avs.map((v, i) => `
         <li><div><b>${esc(v.apelido)}</b> viu ${quando(v.em)}${v.precisao ? ` (precisão de ~${v.precisao} m)` : ''}${v.nota ? `<br><span>${esc(v.nota)}</span>` : ''}</div>
-        <div class="bz-linha"><button type="button" class="pilula leve" data-ver="${i}">Ver no mapa</button>
+        <div class="bz-linha"><button type="button" class="pilula leve" data-ver="${i}"><svg aria-hidden="true"><use href="#i-mapa"/></svg>Ver no mapa</button>
         <a class="pilula leve" target="_blank" rel="noopener" href="${linkRota(v.lat, v.lng)}">Traçar rota</a></div></li>`).join('') : '<li class="vazio">Quando um vizinho disser onde viu, aparece aqui e no mapa.</li>'}</ul>
       <div class="bz-linha">
-        <button type="button" class="pilula leve" data-bz="btnEncerrar">Encerrar alerta</button>
+        <button type="button" class="pilula leve" data-bz="btnEncerrar"><svg aria-hidden="true"><use href="#i-check"/></svg>Encerrar alerta</button>
       </div>`;
     box.querySelectorAll('[data-ver]').forEach((b) => b.addEventListener('click', () => {
       const v = avs[+b.dataset.ver];

@@ -3,6 +3,9 @@ import { configurado } from './perfil-dados.js';
 import { exigirLogin, sair } from './conta.js';
 import { montarComunidade } from './comunidade-ui.js';
 import { AREA_PADRAO } from './firebase-config.js';
+import { registrarServiceWorker } from './pwa.js';
+
+registrarServiceWorker();
 
 const $ = (id) => document.getElementById(id);
 const avisos = [];
