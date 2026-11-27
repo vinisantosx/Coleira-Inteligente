@@ -1,4 +1,8 @@
-# Coleira inteligente para pet: projeto IoT
+# Vitalar: saúde, localização, segurança e cuidado do pet
+
+<img src="site/icones/icone.svg" alt="Logo do Vitalar: plaquinha de coleira com batimento e pata" width="96" />
+
+**Vitalar** (vital + lar) é um projeto IoT de coleira inteligente: acompanha a saúde do pet, confere se ele está em casa, na área segura, e ajuda quem o encontrar a devolvê-lo.
 
 Coleira com ESP32, GPS NEO-6M, sensor MAX30102 (batimentos e detecção de coleira no pet) e LED de alerta.
 O foco desta versão é **monitorar os sinais do pet e conferir se ele está na zona segura**. A coleira sincroniza pelo Wi-Fi de casa com o Firebase (Firestore): batimentos, saúde comparada com o normal dele, coleira no pet, bateria e posição dentro da área.
@@ -81,7 +85,7 @@ O site pode ser instalado como app, sem loja:
 - **Android e computador (Chrome ou Edge):** botão **Instalar app** na barra lateral e em Configurações.
 - **iPhone (Safari):** Compartilhar > Adicionar à Tela de Início (o passo a passo aparece em Configurações).
 
-Instalado, ele abre pela tela inicial em tela cheia, com o ícone da Coleira, e tem atalhos para Mapa, Pet perdido e Rede do bairro (toque longo no ícone, no Android). Sem internet, abre com os últimos dados salvos e mostra "Sem internet" até a conexão voltar.
+Instalado, ele abre pela tela inicial em tela cheia, com o ícone do Vitalar (a plaquinha com batimento), e tem atalhos para Mapa, Pet perdido e Rede do bairro (toque longo no ícone, no Android). Sem internet, abre com os últimos dados salvos e mostra "Sem internet" até a conexão voltar.
 
 Arquivos: `site/manifest.webmanifest` (nome, cores, ícones), `site/sw.js` (guarda o site para abrir offline: arquivos do site pela rede primeiro, bibliotecas e mapa pela cópia salva; dados do Firebase nunca passam por ele), `site/pwa.js` (instalação e aviso de versão nova) e `site/icones/`. Com Firebase, os dados ficam guardados no aparelho pelo próprio Firestore (`persistentLocalCache`). Ao publicar uma versão nova, o app mostra "Há uma versão nova do site. Atualizar".
 
@@ -180,6 +184,16 @@ Segurança da coleira: ela entra no Firebase com uma conta anônima própria (o 
 4. Grave e abra o Monitor Serial (115200). A linha `[debug] IR ...` mostra o valor do sensor. Anote o valor com a coleira no pet e fora dele e ajuste `LIMIAR_PRESENCA_IR` entre os dois.
 
 Como funciona: o núcleo 1 lê o GPS, o MAX30102 e a bateria e controla o LED. O núcleo 0 cuida do Wi-Fi e dos envios. Assim, as requisições HTTPS não atrapalham a leitura dos batimentos.
+
+### Como a coleira decide que o pet saiu da área
+
+A cada segundo, o núcleo 1 lê o GPS e calcula a distância até o limite da área segura (hoje, um círculo: centro na casa e o raio salvo no site). Enquanto o pet anda dentro, a posição só atualiza o mapa (envio a cada 10 s pelo Wi-Fi). O aviso sai apenas quando o estado muda, com três proteções contra a imprecisão do GPS (5 a 15 m):
+
+- **Margem:** "saiu" só conta além de raio + 10 m e "voltou" só aquém de raio − 10 m. Parado perto da borda, o pet não gera avisos em sequência. Em áreas pequenas a margem encolhe (no máximo 1/3 do raio).
+- **Confirmação:** são precisas 5 leituras boas seguidas do mesmo lado (cerca de 5 s). O ponto enviado no aviso é o da primeira delas, onde o pet cruzou o limite.
+- **Leituras ruins não decidem:** com menos de 5 satélites ou HDOP acima de 2,5 (erro de ~12 m ou mais), a posição aparece no mapa mas não muda o estado.
+
+Para ajustar, defina no `config.h` (são opcionais): `MARGEM_AREA_M`, `CONFIRMA_LEITURAS`, `GPS_SATS_MIN` e `GPS_HDOP_MAX`. Dica: deixe o raio **menor que o alcance do Wi-Fi**, para o aviso ser enviado enquanto ainda há sinal.
 
 LED: pisca rápido quando o pet está fora da área (para quem encontrar o pet), dá uma piscada curta a cada 2 s enquanto procura satélites e a cada 5 s quando está tudo bem.
 

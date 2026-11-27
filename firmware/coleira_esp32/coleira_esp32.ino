@@ -1,5 +1,5 @@
 /*
-  Coleira inteligente para pet - firmware ESP32
+  Vitalar - coleira inteligente para pet - firmware ESP32
   ------------------------------------------------
   Nucleo 1 (loop):  GPS NEO-6M, MAX30102 (batimentos + presenca), LED de alerta, bateria
   Nucleo 0 (tarefa): Wi-Fi, envio ao Firestore (REST), leitura da area segura, alertas WhatsApp
@@ -248,9 +248,42 @@ void avaliarMinuto() {
   if (podeAvaliar && alerta != 0 && antes != alerta) enviarEvento(alerta > 0 ? BATIMENTO_ALTO : BATIMENTO_BAIXO, la, ln);
 }
 
+// --- Area segura: protecao contra a imprecisao do GPS ---
+// Valores padrao; para mudar, defina no config.h (nao precisa mexer aqui).
+#ifndef MARGEM_AREA_M
+#define MARGEM_AREA_M        10.0   // so "saiu" alem de raio + 10 m; so "voltou" aquem de raio - 10 m
+#endif
+#ifndef CONFIRMA_LEITURAS
+#define CONFIRMA_LEITURAS       5   // leituras boas seguidas (1 por segundo) para confirmar a troca
+#endif
+#ifndef GPS_SATS_MIN
+#define GPS_SATS_MIN            5   // menos satelites que isso: leitura nao decide nada
+#endif
+#ifndef GPS_HDOP_MAX
+#define GPS_HDOP_MAX          2.5   // HDOP acima disso (~12 m de erro): leitura nao decide nada
+#endif
+
+// Distancia ate o limite da area, com sinal: positiva = fora, negativa = dentro.
+// Hoje a area e um circulo; uma area desenhada (poligono) so precisa trocar esta funcao.
+double distanciaAoLimite(const Area &a, double lat, double lng, double *distCentro) {
+  double d = distanciaMetros(a.lat, a.lng, lat, lng);
+  if (distCentro) *distCentro = d;
+  return d - a.raio;
+}
+
+// Uma leitura so decide se o GPS esta confiavel: posicao recente, satelites e HDOP bons.
+bool leituraConfiavel() {
+  if (!gps.location.isValid() || gps.location.age() >= 5000) return false;
+  if (!gps.satellites.isValid() || (int)gps.satellites.value() < GPS_SATS_MIN) return false;
+  if (!gps.hdop.isValid() || gps.hdop.hdop() > GPS_HDOP_MAX) return false;
+  return true;
+}
+
 void lerGPS() {
   while (SerialGPS.available()) gps.encode(SerialGPS.read());
   static unsigned long ult = 0;
+  static int seguidas = 0;              // leituras boas seguidas apontando para o outro estado
+  static double latTroca = 0, lngTroca = 0;   // primeiro ponto da sequencia (onde cruzou o limite)
   if (millis() - ult < 1000) return;
   ult = millis();
 
@@ -259,23 +292,37 @@ void lerGPS() {
   Area a = area;
   estado.gpsFix = fix;
   estado.satelites = gps.satellites.isValid() ? gps.satellites.value() : 0;
-  if (fix) {
-    estado.lat = gps.location.lat();
-    estado.lng = gps.location.lng();
-    estado.fixEm = millis();
-    estado.precisaoM = gps.hdop.isValid() ? gps.hdop.hdop() * 5.0f : 0;
-    estado.velocidadeKmh = gps.speed.isValid() ? gps.speed.kmph() : 0;
-    estado.distancia = distanciaMetros(a.lat, a.lng, estado.lat, estado.lng);
-    bool dentro = estado.distancia <= a.raio;
-    if (dentro != estado.dentroArea) {
-      estado.dentroArea = dentro;
-      double la = estado.lat, ln = estado.lng;
-      xSemaphoreGive(trava);
-      enviarEvento(dentro ? VOLTOU_AREA : SAIU_AREA, la, ln);
-      return;
-    }
-  }
+  if (!fix) { xSemaphoreGive(trava); return; }
+
+  // A posicao sempre atualiza o mapa, mesmo com GPS fraco.
+  estado.lat = gps.location.lat();
+  estado.lng = gps.location.lng();
+  estado.fixEm = millis();
+  estado.precisaoM = gps.hdop.isValid() ? gps.hdop.hdop() * 5.0f : 0;
+  estado.velocidadeKmh = gps.speed.isValid() ? gps.speed.kmph() : 0;
+  double limite = distanciaAoLimite(a, estado.lat, estado.lng, &estado.distancia);
+
+  // 3) Leitura ruim nao decide nada: nao conta e nem zera a sequencia.
+  if (!leituraConfiavel()) { xSemaphoreGive(trava); return; }
+
+  // 1) Margem: a faixa entre (limite - margem) e (limite + margem) nao muda o estado.
+  //    Em areas pequenas a margem encolhe (no maximo 1/3 do raio) para "voltou" continuar possivel.
+  double margem = min((double)MARGEM_AREA_M, a.raio / 3.0);
+  bool apontaFora   = estado.dentroArea  && limite >  margem;
+  bool apontaDentro = !estado.dentroArea && limite < -margem;
+
+  if (!apontaFora && !apontaDentro) { seguidas = 0; xSemaphoreGive(trava); return; }
+
+  // 2) Confirmacao: precisa de CONFIRMA_LEITURAS leituras boas seguidas do mesmo lado.
+  if (seguidas == 0) { latTroca = estado.lat; lngTroca = estado.lng; }
+  if (++seguidas < CONFIRMA_LEITURAS) { xSemaphoreGive(trava); return; }
+
+  seguidas = 0;
+  estado.dentroArea = apontaDentro;
+  double la = latTroca, ln = lngTroca;
   xSemaphoreGive(trava);
+  Serial.printf("[area] %s (%.0f m do limite, margem %.0f m)\n", apontaDentro ? "voltou" : "saiu", limite, margem);
+  enviarEvento(apontaDentro ? VOLTOU_AREA : SAIU_AREA, la, ln);
 }
 
 void atualizarLED() {
