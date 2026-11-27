@@ -12,14 +12,19 @@ import { registrarServiceWorker, acompanharInstalacao, instalar, corDaBarra } fr
 import { lerLayout, aplicarLayout, salvarLayout, LAYOUT_PADRAO, lerTutor, salvarTutor, enviarTrocaSenha, lerFicha, salvarFicha, idade } from './ajustes.js';
 import { exigirLogin, sair, emailAtual } from './conta.js';
 import { analisar, graficoRepouso, graficoAtividade, historicoExemplo, dataLocal, diasAtras } from './saude.js';
+import {
+  MAX_CANTOS, ehPoligono, limiteArea, escalaArea, areaM2, completar, normalizarArea, paraFirestore, mesmaArea,
+  retangulo, meioDoLado, validarArea
+} from './area.js';
 
 const $ = (id) => document.getElementById(id);
 
 // ============================================================ estado da página
-let area = carregarAreaLocal() || { ...AREA_PADRAO };   // área salva (a que vale para os alertas)
+let area = normalizarArea(carregarAreaLocal(), AREA_PADRAO);   // área salva (a que vale para os alertas)
 let areaEditada = null;                                   // rascunho enquanto o tutor edita
 let pilhaDesfazer = [];                                   // versões anteriores do rascunho
 let movendoCasa = false;
+let desenho = null;                                       // cantos marcados no "Desenhar ponto a ponto"
 let ultimoEstado = null;
 let anterior = { fora: null, coleiraNoPet: null };
 let alertasLocais = [];
@@ -41,7 +46,6 @@ const CHAVE_SAUDE = 'coleira-saude-' + PET_ID;
 
 
 const areaAtual = () => areaEditada || area;
-const mesmaArea = (a, b) => a.lat === b.lat && a.lng === b.lng && a.raio === b.raio;
 const temPendencia = () => !mesmaArea(areaAtual(), area);
 
 // ============================================================ mapa
@@ -51,9 +55,39 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
-const circuloArea = L.circle([area.lat, area.lng], {
-  color: corTema('--grama'), weight: 2, dashArray: '6 6', fillColor: corTema('--grama'), fillOpacity: 0.1, radius: area.raio
-}).addTo(map);
+// a área segura desenhada num mapa: círculo ou contorno (polígono)
+const estiloArea = () => {
+  const c = corTema('--grama');
+  return { color: c, weight: 2, dashArray: '6 6', fillColor: c, fillOpacity: 0.1, interactive: false };
+};
+function criarForma(mapa) {
+  const grupo = L.layerGroup().addTo(mapa);
+  let camada = null;
+  return {
+    desenhar(a) {
+      grupo.clearLayers();
+      camada = ehPoligono(a)
+        ? L.polygon(a.pontos.map((p) => [p.lat, p.lng]), estiloArea())
+        : L.circle([a.lat, a.lng], { ...estiloArea(), radius: a.raio });
+      grupo.addLayer(camada);
+    },
+    // contorno sendo desenhado: só a prévia dos cantos marcados (o antigo some para não confundir)
+    previa(pontos) {
+      grupo.clearLayers();
+      camada = null;
+      if (pontos.length >= 3) {
+        camada = L.polygon(pontos.map((p) => [p.lat, p.lng]), { ...estiloArea(), color: corTema('--azul'), fillColor: corTema('--azul'), weight: 0 });
+        grupo.addLayer(camada);
+      }
+    },
+    estilo() { camada?.setStyle(estiloArea()); },
+    limites() { return camada ? camada.getBounds() : L.latLngBounds([]); }
+  };
+}
+const formaArea = criarForma(map);
+formaArea.desenhar(area);
+const camadaCantos = L.layerGroup().addTo(map);     // cantos arrastáveis e "+" do contorno
+const linhaDesenho = L.polyline([], { color: corTema('--azul'), weight: 2, dashArray: '4 6', interactive: false }).addTo(map);
 
 const iconeCasa = (editando) => L.divIcon({
   className: '',
@@ -81,9 +115,8 @@ const mapaMini = L.map('mapaMini', {
   boxZoom: false, keyboard: false, touchZoom: false, tap: false
 }).setView([area.lat, area.lng], 17);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mapaMini);
-const miniArea = L.circle([area.lat, area.lng], {
-  color: corTema('--grama'), weight: 2, dashArray: '6 6', fillColor: corTema('--grama'), fillOpacity: 0.1, radius: area.raio, interactive: false
-}).addTo(mapaMini);
+const formaMini = criarForma(mapaMini);
+formaMini.desenhar(area);
 const miniCasa = L.marker([area.lat, area.lng], { icon: iconeCasa(false), interactive: false, keyboard: false }).addTo(mapaMini);
 const miniPatas = L.layerGroup().addTo(mapaMini);
 const miniPet = L.marker([area.lat, area.lng], { icon: iconePet(false), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(mapaMini);
@@ -95,23 +128,34 @@ function atualizarMini(ponto, fora) {
   ultimoMini = [ponto, fora];
   if (!$('mapaMini').clientWidth) return;
   const a = areaAtual();
-  miniArea.setLatLng([a.lat, a.lng]).setRadius(a.raio);
+  formaMini.desenhar(a);
   miniCasa.setLatLng([a.lat, a.lng]);
   if (ponto) { miniPet.setIcon(iconePet(fora)); moverSuave(miniPet, [ponto.lat, ponto.lng]); }
-  const limites = miniArea.getBounds();
+  const limites = formaMini.limites();
   if (ponto) limites.extend([ponto.lat, ponto.lng]);
   mapaMini.fitBounds(limites.pad(0.25), { animate: false, maxZoom: 18 });
 }
 
+const fmtArea = (m2) => m2 >= 10000 ? (m2 / 10000).toFixed(1).replace('.', ',') + ' ha' : Math.round(m2) + ' m²';
+
 function desenharArea() {
-  const a = areaAtual();
-  circuloArea.setLatLng([a.lat, a.lng]).setRadius(a.raio);
+  const a = areaAtual(), poli = ehPoligono(a);
+  if (desenho) formaArea.previa(desenho); else formaArea.desenhar(a);
+  desenharCantos(a);
   marcadorCasa.setLatLng([a.lat, a.lng]);
   atualizarMini(saida || (ultimoEstado?.lat ? ultimoEstado : null), document.body.dataset.estado === 'fora');
-  $('raio').value = a.raio;
-  $('raioValor').textContent = a.raio + ' m';
-  const r = $('raio');
-  r.style.setProperty('--pct', ((a.raio - r.min) / (r.max - r.min)) * 100 + '%');
+  document.querySelector(`input[name="formaArea"][value="${poli || desenho ? 'poligono' : 'circulo'}"]`).checked = true;
+  $('grupoRaio').hidden = poli || !!desenho;
+  $('grupoContorno').hidden = !poli && !desenho;
+  $('infoContorno').textContent = desenho
+    ? `${desenho.length} ${desenho.length === 1 ? 'canto marcado' : 'cantos marcados'}`
+    : poli ? `${a.pontos.length} cantos, ${fmtArea(areaM2(a))}` : '';
+  if (!poli) {
+    const r = $('raio'), raio = Math.min(+r.max, Math.max(+r.min, a.raio));
+    r.value = raio;
+    $('raioValor').textContent = a.raio + ' m';
+    r.style.setProperty('--pct', ((raio - r.min) / (r.max - r.min)) * 100 + '%');
+  }
   atualizarControlesArea();
   if (ultimoEstado) renderEstado(ultimoEstado, false);
 }
@@ -161,7 +205,10 @@ function renderEstado(e, novo = true) {
   const a = areaAtual();
   const temPosicao = e.gpsFix !== false && e.lat && e.lng;
   let dist = temPosicao ? Math.round(map.distance([a.lat, a.lng], [e.lat, e.lng])) : null;
-  const fora = dist != null && dist > a.raio;
+  // Quem decide "fora" é a coleira (com margem e confirmação contra o erro do GPS).
+  // Sem esse dado, o site calcula pela área salva.
+  const foraCalc = temPosicao && limiteArea(area, e.lat, e.lng) > 0;
+  const fora = (typeof e.dentroArea === 'boolean' ? !e.dentroArea : foraCalc) && (temPosicao || !!saida);
 
   // Sem conectividade móvel: fora da área não há posição ao vivo.
   // Guardamos só o ponto em que ele saiu e mostramos esse "último ponto registrado".
@@ -177,8 +224,13 @@ function renderEstado(e, novo = true) {
 
   // distância + régua (meio da régua = limite da área)
   contar($('distancia'), dist != null ? dist : 'sem GPS', { sufixo: ' m' });
-  $('distanciaLegenda').textContent = `da casa (limite de ${a.raio} m)`;
-  $('reguaPreench').style.width = dist != null ? Math.min(100, (dist / (a.raio * 2)) * 100) + '%' : '0';
+  const lim = ponto ? limiteArea(a, ponto.lat, ponto.lng) : null;
+  $('distanciaLegenda').textContent = !ehPoligono(a) ? `da casa (limite de ${a.raio} m)`
+    : lim == null ? 'da casa (contorno do terreno)'
+    : lim > 0 ? `da casa, ${Math.round(lim)} m além do contorno` : `da casa, ${Math.round(-lim)} m antes do contorno`;
+  // régua: o meio é o limite da área; as pontas, uma "meia largura" para dentro e para fora
+  const esc = Math.max(1, escalaArea(a));
+  $('reguaPreench').style.width = lim != null ? (50 + Math.max(-1, Math.min(1, lim / esc)) * 50) + '%' : '0';
 
   // batimentos
   const bpm = e.coleiraNoPet ? (e.batimentos || 0) : 0;
@@ -540,7 +592,7 @@ function avisar(texto) {
     });
   } catch { /* sem som */ }
   if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification('Coleira inteligente', { body: texto });
+    new Notification('Vitalar', { body: texto });
   }
 }
 
@@ -562,6 +614,11 @@ function editar(nova) {
 }
 
 function desfazer() {
+  if (desenho) {                                     // desenhando: desfaz o último canto marcado
+    if (desenho.length) { desenho.pop(); desenharArea(); }
+    else definirDesenho(false);
+    return;
+  }
   if (!pilhaDesfazer.length) return;
   areaEditada = pilhaDesfazer.pop();
   if (!pilhaDesfazer.length && mesmaArea(areaEditada, area)) areaEditada = null;
@@ -570,6 +627,7 @@ function desfazer() {
 }
 
 function cancelarEdicao() {
+  if (desenho) definirDesenho(false);
   pilhaDesfazer = [];
   areaEditada = null;
   definirMovendo(false);
@@ -578,11 +636,13 @@ function cancelarEdicao() {
 }
 
 function definirMovendo(ligado) {
+  if (ligado && desenho) definirDesenho(false);
   movendoCasa = ligado;
   $('btnMoverCasa').classList.toggle('ativo', ligado);
-  $('btnMoverCasa').querySelector('span').textContent = ligado ? 'Pronto' : 'Mover casa';
+  $('btnMoverCasa').querySelector('span').textContent = ligado ? 'Pronto' : 'Mover a casa';
   $('map').classList.toggle('movendo', ligado);
   $('dicaMapa').hidden = !ligado;
+  if (ligado) $('dicaMapa').textContent = 'Clique no mapa ou arraste o marcador da casa até o lugar certo.';
   marcadorCasa.setIcon(iconeCasa(ligado));
   ligado ? marcadorCasa.dragging.enable() : marcadorCasa.dragging.disable();
   ligado ? marcadorCasa.closePopup() : null;
@@ -590,31 +650,144 @@ function definirMovendo(ligado) {
 }
 
 function atualizarControlesArea() {
-  const n = pilhaDesfazer.length, pend = temPendencia();
-  $('btnDesfazer').disabled = !n;
-  $('contDesfazer').hidden = n < 2;
+  const n = pilhaDesfazer.length, pend = temPendencia(), a = areaAtual();
+  const { erro, avisos } = desenho ? { erro: null, avisos: [] } : validarArea(a);
+  $('btnDesfazer').disabled = !n && !desenho;
+  $('contDesfazer').hidden = n < 2 || !!desenho;
   $('contDesfazer').textContent = n;
-  $('btnCancelar').disabled = !pend && !movendoCasa;
-  $('btnSalvarArea').disabled = !pend;
+  $('btnCancelar').disabled = !pend && !movendoCasa && !desenho;
+  $('btnSalvarArea').disabled = !pend || !!erro || !!desenho;
   const dica = $('dicaArea');
-  if (pend) {
+  if (desenho) {
+    dica.className = 'dica pendente';
+    dica.textContent = 'Desenhando. Toque em "Concluir contorno" (ou no primeiro canto) para terminar.';
+  } else if (pend) {
     dica.className = 'dica pendente';
     dica.textContent = 'Não salvo. Os alertas usam a área anterior até você salvar.';
   } else if (!dica.classList.contains('salvo')) {
     dica.className = 'dica';
-    dica.textContent = 'O círculo verde é a área em que o pet pode ficar sem gerar alerta.';
+    dica.textContent = ehPoligono(a)
+      ? 'Arraste os cantos até o muro. O + no meio de um lado cria outro canto; tocar num canto o remove.'
+      : 'O círculo verde é a área em que o pet pode ficar sem gerar alerta.';
   }
+  const lista = $('avisosArea');
+  lista.replaceChildren(...[erro, ...avisos].filter(Boolean).map((t) => {
+    const li = document.createElement('li');
+    li.textContent = t;
+    if (t === erro) li.className = 'erro';
+    return li;
+  }));
+  lista.hidden = !lista.children.length;
 }
+
+// ---------------------------------------------------------------- contorno do terreno
+const iconeCanto = (classe, texto = '') => L.divIcon({
+  className: '', html: `<div class="alvo-mapa"><div class="${classe}">${texto}</div></div>`,
+  iconSize: [32, 32], iconAnchor: [16, 16]
+});
+
+function desenharCantos(a) {
+  camadaCantos.clearLayers();
+  linhaDesenho.setLatLngs(desenho ? desenho.map((p) => [p.lat, p.lng]) : []);
+  if (desenho) {
+    desenho.forEach((p, i) => {
+      const m = L.marker([p.lat, p.lng], {
+        icon: iconeCanto(i === 0 && desenho.length >= 3 ? 'mk-canto primeiro' : 'mk-canto novo'),
+        keyboard: false, title: i === 0 ? 'Primeiro canto: toque para fechar o contorno' : `Canto ${i + 1}`
+      }).addTo(camadaCantos);
+      if (i === 0) m.on('click', concluirDesenho);
+    });
+    return;
+  }
+  if (!ehPoligono(a)) return;
+
+  a.pontos.forEach((p, i) => {
+    const m = L.marker([p.lat, p.lng], {
+      icon: iconeCanto('mk-canto'), draggable: true, keyboard: false, zIndexOffset: 500,
+      title: 'Arraste para mover este canto. Toque para remover.'
+    }).addTo(camadaCantos);
+    const comCanto = (ll) => a.pontos.map((q, k) => (k === i ? { lat: +ll.lat.toFixed(7), lng: +ll.lng.toFixed(7) } : q));
+    m.on('drag', (ev) => formaArea.desenhar({ ...a, pontos: comCanto(ev.target.getLatLng()) }));
+    m.on('dragend', (ev) => editar(completar({ ...a, pontos: comCanto(ev.target.getLatLng()) })));
+    m.on('click', () => {
+      if (a.pontos.length <= 3) { mostrarAviso('O contorno precisa de pelo menos 3 cantos.', null, null, 3000); return; }
+      editar(completar({ ...a, pontos: a.pontos.filter((_, k) => k !== i) }));
+    });
+  });
+
+  if (a.pontos.length >= MAX_CANTOS) return;
+  a.pontos.forEach((_, i) => {
+    const meio = meioDoLado(a, i);
+    const m = L.marker([meio.lat, meio.lng], {
+      icon: iconeCanto('mk-meio', '+'), draggable: true, keyboard: false, zIndexOffset: 400,
+      title: 'Toque ou arraste para criar um canto aqui'
+    }).addTo(camadaCantos);
+    const comNovo = (ll) => [...a.pontos.slice(0, i + 1), { lat: +ll.lat.toFixed(7), lng: +ll.lng.toFixed(7) }, ...a.pontos.slice(i + 1)];
+    m.on('drag', (ev) => formaArea.desenhar({ ...a, pontos: comNovo(ev.target.getLatLng()) }));
+    m.on('dragend', (ev) => editar(completar({ ...a, pontos: comNovo(ev.target.getLatLng()) })));
+    m.on('click', () => editar(completar({ ...a, pontos: comNovo(meio) })));
+  });
+}
+
+function definirDesenho(ligado) {
+  if (ligado && movendoCasa) definirMovendo(false);
+  desenho = ligado ? [] : null;
+  $('btnDesenhar').classList.toggle('ativo', ligado);
+  $('btnDesenhar').querySelector('span').textContent = ligado ? 'Concluir contorno' : 'Desenhar ponto a ponto';
+  $('map').classList.toggle('desenhando', ligado);
+  $('dicaMapa').hidden = !ligado;
+  if (ligado) $('dicaMapa').textContent = 'Toque no mapa em cada canto do terreno, seguindo o muro.';
+  desenharArea();
+}
+
+function concluirDesenho() {
+  if (!desenho) return;
+  if (desenho.length < 3) { mostrarAviso('Marque pelo menos 3 cantos para fechar o contorno.', null, null, 3000); return; }
+  const pontos = desenho;
+  definirDesenho(false);
+  editar(completar({ ...areaAtual(), forma: 'poligono', pontos }));
+}
+
+// Começa com um retângulo em volta da casa, do tamanho aproximado da área atual.
+function comecarRetangulo() {
+  const a = areaAtual(), meia = Math.max(10, Math.round((ehPoligono(a) ? escalaArea(a) : a.raio) * 0.7));
+  editar(completar({ ...a, forma: 'poligono', pontos: retangulo(a, meia) }));
+  map.fitBounds(formaArea.limites().pad(0.4), { maxZoom: 19 });
+}
+
+document.querySelectorAll('input[name="formaArea"]').forEach((radio) => radio.addEventListener('change', () => {
+  if (desenho) definirDesenho(false);
+  const a = areaAtual();
+  if (radio.value === 'poligono') {
+    if (a.pontos?.length >= 3) editar(completar({ ...a, forma: 'poligono' }));
+    else {
+      comecarRetangulo();
+      mostrarAviso('Comecei com um retângulo em volta da casa. Arraste os cantos até o muro.', null, null, 6000);
+    }
+  } else {
+    // círculo com a mesma área do contorno (arredondado de 5 em 5 m)
+    const raio = Math.max(10, Math.min(500, Math.round(Math.sqrt(areaM2(a) / Math.PI) / 5) * 5));
+    editar(completar({ ...a, forma: 'circulo', raio }));
+  }
+}));
+$('btnDesenhar').addEventListener('click', () => (desenho ? concluirDesenho() : definirDesenho(true)));
+$('btnRetangulo').addEventListener('click', () => { if (desenho) definirDesenho(false); comecarRetangulo(); });
 
 $('btnMoverCasa').addEventListener('click', () => definirMovendo(!movendoCasa));
 $('btnDesfazer').addEventListener('click', desfazer);
 $('btnCancelar').addEventListener('click', cancelarEdicao);
 
 map.on('click', (ev) => {
+  if (desenho) {
+    if (desenho.length >= MAX_CANTOS) { mostrarAviso(`Use no máximo ${MAX_CANTOS} cantos.`, null, null, 3000); return; }
+    desenho.push({ lat: +ev.latlng.lat.toFixed(7), lng: +ev.latlng.lng.toFixed(7) });
+    desenharArea();
+    return;
+  }
   if (!movendoCasa) return;
   editar({ ...areaAtual(), lat: +ev.latlng.lat.toFixed(6), lng: +ev.latlng.lng.toFixed(6) });
 });
-marcadorCasa.on('drag', (ev) => circuloArea.setLatLng(ev.latlng));
+marcadorCasa.on('drag', (ev) => { if (!ehPoligono(areaAtual())) formaArea.desenhar({ ...areaAtual(), lat: ev.latlng.lat, lng: ev.latlng.lng }); });
 marcadorCasa.on('dragend', (ev) => {
   const p = ev.target.getLatLng();
   editar({ ...areaAtual(), lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6) });
@@ -642,16 +815,20 @@ document.addEventListener('keydown', (ev) => {
     if (pilhaDesfazer.length) { ev.preventDefault(); desfazer(); }
   }
   if (ev.key === 'Escape' && movendoCasa) definirMovendo(false);
+  if (ev.key === 'Escape' && desenho) definirDesenho(false);
+  if (ev.key === 'Enter' && desenho && alvo !== 'INPUT' && alvo !== 'TEXTAREA' && alvo !== 'BUTTON') concluirDesenho();
 });
 
 async function gravarArea(a) {
-  if (db) await fs.setDoc(fs.doc(db, 'pets', PET_ID, 'config', 'area'), { ...a, atualizadoEm: fs.serverTimestamp() });
-  else salvarAreaLocal(a);
+  const doc = paraFirestore(a);
+  if (db) await fs.setDoc(fs.doc(db, 'pets', PET_ID, 'config', 'area'), { ...doc, atualizadoEm: fs.serverTimestamp() });
+  else salvarAreaLocal(doc);
 }
 
 $('btnSalvarArea').addEventListener('click', async () => {
   if (!temPendencia()) return;
-  const nova = { ...areaAtual() }, antiga = { ...area };
+  if (desenho || validarArea(areaAtual()).erro) return;
+  const nova = completar(areaAtual()), antiga = completar(area);
   $('btnSalvarArea').disabled = true;
   try {
     await gravarArea(nova);
@@ -700,7 +877,7 @@ async function passoSimulador(forcar = false) {
     if (!sim.rota.length) { sim.rota = null; marcarPasseio(false); }
   }
   const dist = map.distance([area.lat, area.lng], [sim.lat, sim.lng]);
-  const dentro = dist <= area.raio;
+  const dentro = limiteArea(area, sim.lat, sim.lng) <= 0;
   const base = dentro ? 92 : 138;
 
   // saúde (simulação acelerada: cada segundo conta como 1 minuto da coleira)
@@ -854,8 +1031,8 @@ window.addEventListener('layout-mudou', (ev) => {
   layout = ev.detail;
   const c = corTema('--grama');
   corDaBarra(c);
-  circuloArea.setStyle({ color: c, fillColor: c });
-  miniArea.setStyle({ color: c, fillColor: c });
+  formaArea.estilo();
+  formaMini.estilo();
   aplicarPerfil();
 });
 
@@ -933,7 +1110,7 @@ $('btnTrocarSenha').addEventListener('click', async () => {
 function aplicarPerfil() {
   const enc = encontroAtivo();
   $('nomePet').textContent = nomePet();
-  document.title = `${nomePet()} | Coleira inteligente`;
+  document.title = `${nomePet()} | Vitalar`;
   document.body.dataset.perdido = String(!!perfil.perdido && !enc);
   document.body.dataset.encontrado = String(!!enc);
   $('nomePetMenu').textContent = nomePet();
@@ -1541,9 +1718,18 @@ function irPara(sec, novaEntrada = false) {
   if (sec === 'mapa') {
     requestAnimationFrame(() => {
       map.invalidateSize();
-      if (!mapaJaAberto) { mapaJaAberto = true; const a = areaAtual(); map.setView(ultimoEstado?.lat ? [ultimoEstado.lat, ultimoEstado.lng] : [a.lat, a.lng], 17); }
+      if (!mapaJaAberto) {
+        // primeira vez: enquadra a área inteira (e o pet), em qualquer tamanho de tela
+        mapaJaAberto = true;
+        const limites = formaArea.limites();
+        if (ultimoEstado?.lat) limites.extend([ultimoEstado.lat, ultimoEstado.lng]);
+        if (limites.isValid()) map.fitBounds(limites.pad(0.15), { maxZoom: 19, animate: false });
+      }
     });
-  } else if (movendoCasa) definirMovendo(false);
+  } else {
+    if (movendoCasa) definirMovendo(false);
+    if (desenho) definirDesenho(false);
+  }
   if (sec === 'alertas') marcarAlertasLidos();
   if (mudou) {
     window.scrollTo({ top: 0 });
@@ -1634,7 +1820,7 @@ async function conectarFirebase() {
   fs.onSnapshot(fs.doc(db, 'pets', PET_ID, 'config', 'area'), (snap) => {
     if (!snap.exists()) return;
     const d = snap.data();
-    area = { lat: d.lat, lng: d.lng, raio: d.raio };
+    area = normalizarArea(d, AREA_PADRAO);
     desenharArea();                 // um rascunho em andamento continua sendo mostrado
   });
 

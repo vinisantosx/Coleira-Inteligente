@@ -13,7 +13,7 @@
 
   Estrutura no Firestore:
     pets/{PET_ID}        <- estado atual (escrito pela coleira)
-    config/area          <- casa e raio (escrito pelo site)
+    config/area          <- casa, raio e, se desenhada, o poligono (escrito pelo site)
     perfis/{PET_ID}      <- campo "perdido" (modo pet perdido, ligado pelo site)
     saude/{PET_ID}_{data} <- resumo do dia: distancia, minutos ativos, batimento em repouso
 
@@ -63,7 +63,15 @@ struct Dia {                   // acumulado do dia (vai para saude/{PET_ID}_{dat
   int    bpmRepousoN = 0, bpmRepousoMin = 0, bpmRepousoMax = 0;
 };
 struct Base { float media = 0, var = 0; int dias = 0; };   // o "normal" do pet
-struct Area { double lat = CASA_LAT_PADRAO, lng = CASA_LNG_PADRAO, raio = RAIO_PADRAO_M; };
+#define AREA_MAX_PONTOS 16   // o mesmo limite das regras do Firestore e do site
+// Area segura: circulo (casa + raio) ou poligono desenhado no site (3 a 16 cantos).
+// "escala" ~ meia largura da area, usada para nao deixar a margem maior que a propria area.
+struct Area {
+  double lat = CASA_LAT_PADRAO, lng = CASA_LNG_PADRAO, raio = RAIO_PADRAO_M;
+  uint8_t n = 0;                               // 0 = circulo
+  double plat[AREA_MAX_PONTOS], plng[AREA_MAX_PONTOS];
+  double escala = RAIO_PADRAO_M;
+};
 
 enum TipoEvento : uint8_t { SAIU_AREA, VOLTOU_AREA, COLEIRA_REMOVIDA, COLEIRA_COLOCADA, BATERIA_BAIXA,
                            BATIMENTO_ALTO, BATIMENTO_BAIXO };
@@ -265,10 +273,53 @@ void avaliarMinuto() {
 
 // Distancia ate o limite da area, com sinal: positiva = fora, negativa = dentro.
 // Hoje a area e um circulo; uma area desenhada (poligono) so precisa trocar esta funcao.
+// Projecao local em metros (plana): erro desprezivel para areas de algumas centenas de metros.
+static void paraMetros(double lat0, double lng0, double lat, double lng, double &x, double &y) {
+  const double R = 6371000.0, r = PI / 180.0;
+  x = (lng - lng0) * r * R * cos(lat0 * r);
+  y = (lat - lat0) * r * R;
+}
+
+// Distancia do ponto (px, py) ao segmento (ax, ay)-(bx, by), tudo em metros.
+static double distSegmento(double px, double py, double ax, double ay, double bx, double by) {
+  double dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+  double t = L > 0 ? ((px - ax) * dx + (py - ay) * dy) / L : 0;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  double cx = ax + t * dx - px, cy = ay + t * dy - py;
+  return sqrt(cx * cx + cy * cy);
+}
+
 double distanciaAoLimite(const Area &a, double lat, double lng, double *distCentro) {
   double d = distanciaMetros(a.lat, a.lng, lat, lng);
   if (distCentro) *distCentro = d;
-  return d - a.raio;
+  if (a.n < 3) return d - a.raio;                       // circulo
+
+  // Poligono: "ponto dentro" pelo teste do raio (conta quantos lados a linha cruza)
+  // e distancia ate o lado mais proximo. Negativa = dentro, positiva = fora.
+  double px, py; paraMetros(a.lat, a.lng, lat, lng, px, py);
+  bool dentro = false; double menor = 1e12;
+  for (uint8_t i = 0, j = a.n - 1; i < a.n; j = i++) {
+    double xi, yi, xj, yj;
+    paraMetros(a.lat, a.lng, a.plat[i], a.plng[i], xi, yi);
+    paraMetros(a.lat, a.lng, a.plat[j], a.plng[j], xj, yj);
+    if (((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) dentro = !dentro;
+    double ds = distSegmento(px, py, xi, yi, xj, yj);
+    if (ds < menor) menor = ds;
+  }
+  return dentro ? -menor : menor;
+}
+
+// Meia largura do poligono (area / perimetro x 2): num quadrado de 40 m da 20 m.
+double escalaPoligono(const Area &a) {
+  double area2 = 0, perim = 0;
+  for (uint8_t i = 0, j = a.n - 1; i < a.n; j = i++) {
+    double xi, yi, xj, yj;
+    paraMetros(a.lat, a.lng, a.plat[i], a.plng[i], xi, yi);
+    paraMetros(a.lat, a.lng, a.plat[j], a.plng[j], xj, yj);
+    area2 += xj * yi - xi * yj;                 // 2 x area (formula do laco)
+    perim += sqrt((xi - xj) * (xi - xj) + (yi - yj) * (yi - yj));
+  }
+  return perim > 0 ? fabs(area2) / perim : 0;
 }
 
 // Uma leitura so decide se o GPS esta confiavel: posicao recente, satelites e HDOP bons.
@@ -307,7 +358,7 @@ void lerGPS() {
 
   // 1) Margem: a faixa entre (limite - margem) e (limite + margem) nao muda o estado.
   //    Em areas pequenas a margem encolhe (no maximo 1/3 do raio) para "voltou" continuar possivel.
-  double margem = min((double)MARGEM_AREA_M, a.raio / 3.0);
+  double margem = min((double)MARGEM_AREA_M, a.escala / 3.0);
   bool apontaFora   = estado.dentroArea  && limite >  margem;
   bool apontaDentro = !estado.dentroArea && limite < -margem;
 
@@ -462,19 +513,42 @@ double lerNumero(JsonVariantConst f) {
   return NAN;
 }
 
+// Le o documento config/area no formato REST do Firestore. Falso = documento invalido (mantem a area atual).
+bool lerAreaFirestore(const String &resp, Area &nova) {
+  JsonDocument doc;
+  if (deserializeJson(doc, resp)) return false;
+  JsonObjectConst f = doc["fields"];
+  double la = lerNumero(f["lat"]), ln = lerNumero(f["lng"]), r = lerNumero(f["raio"]);
+  if (isnan(la) || isnan(ln) || isnan(r) || r < 5) return false;
+
+  nova = Area(); nova.lat = la; nova.lng = ln; nova.raio = r; nova.escala = r;
+  // Poligono desenhado no site: pontos = [{lat, lng}, ...]. Qualquer ponto invalido -> usa o circulo.
+  const char *forma = f["forma"]["stringValue"] | "circulo";
+  JsonArrayConst pts = f["pontos"]["arrayValue"]["values"];
+  if (!strcmp(forma, "poligono") && pts.size() >= 3 && pts.size() <= AREA_MAX_PONTOS) {
+    uint8_t n = 0; bool ok = true;
+    for (JsonVariantConst p : pts) {
+      double pla = lerNumero(p["mapValue"]["fields"]["lat"]), pln = lerNumero(p["mapValue"]["fields"]["lng"]);
+      if (isnan(pla) || isnan(pln) || distanciaMetros(la, ln, pla, pln) > 5000) { ok = false; break; }
+      nova.plat[n] = pla; nova.plng[n] = pln; n++;
+    }
+    if (ok) { nova.n = n; nova.escala = escalaPoligono(nova); }
+    else Serial.println("[area] poligono invalido; usando o circulo");
+  }
+  return true;
+}
+
 void buscarArea() {
   String resp;
   int cod = requisicao("GET", urlFirestore("pets/" PET_ID "/config/area"), "", &resp);
   if (cod != 200) { Serial.printf("[area] GET %d (usando a area atual)\n", cod); return; }
-  JsonDocument doc;
-  if (deserializeJson(doc, resp)) return;
-  JsonObjectConst f = doc["fields"];
-  double la = lerNumero(f["lat"]), ln = lerNumero(f["lng"]), r = lerNumero(f["raio"]);
-  if (isnan(la) || isnan(ln) || isnan(r) || r < 5) return;
+  Area nova;
+  if (!lerAreaFirestore(resp, nova)) return;
   xSemaphoreTake(trava, portMAX_DELAY);
-  area.lat = la; area.lng = ln; area.raio = r;
+  area = nova;
   xSemaphoreGive(trava);
-  Serial.printf("[area] casa %.6f, %.6f raio %.0f m\n", la, ln, r);
+  if (nova.n) Serial.printf("[area] poligono com %d cantos, casa %.6f, %.6f (meia largura %.0f m)\n", nova.n, nova.lat, nova.lng, nova.escala);
+  else Serial.printf("[area] circulo: casa %.6f, %.6f raio %.0f m\n", nova.lat, nova.lng, nova.raio);
 }
 
 // modo pet perdido: o tutor liga/desliga no site (perfis/{PET_ID}.perdido)

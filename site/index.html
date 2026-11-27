@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Coleira | Monitor do pet</title>
+    <title>Vitalar | Saúde e segurança do pet</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
       integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <link rel="manifest" href="manifest.webmanifest" />
@@ -11,11 +11,11 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Coleira" />
-    <link rel="icon" href="icones/icone.svg" type="image/svg+xml" />
+    <meta name="apple-mobile-web-app-title" content="Vitalar" />
+    <link rel="icon" href="icones/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="icones/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="icones/apple-touch-icon.png" />
-    <link rel="stylesheet" href="style.css?v=2026-11-27d" />
+    <link rel="stylesheet" href="style.css?v=2026-11-27g" />
     <script>
       // aparência escolhida pelo tutor (Configurações > Aparência), aplicada antes da página aparecer
       (function () {
@@ -36,6 +36,9 @@
       <defs>
         <symbol id="i-pata" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="5" ry="4.2"/><circle cx="5.5" cy="10" r="2.2"/><circle cx="9.5" cy="6.2" r="2.3"/><circle cx="14.5" cy="6.2" r="2.3"/><circle cx="18.5" cy="10" r="2.2"/></symbol>
         <symbol id="i-casa" viewBox="0 0 24 24"><path d="M12 3 2.5 11h2.7v9h5.3v-5.5h3v5.5h5.3v-9h2.7z"/></symbol>
+        <symbol id="i-circulo" viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2.2a6.8 6.8 0 1 1 0 13.6 6.8 6.8 0 0 1 0-13.6z"/></symbol>
+        <symbol id="i-contorno" viewBox="0 0 24 24"><path d="M4 3.5h11l5 5.5v11.5H9.5V15H4zm2.2 2.2v7.1h5.5v5.5h6.1v-8.4l-3.7-4.2z"/><circle cx="4" cy="3.5" r="2.2"/><circle cx="20" cy="20.5" r="2.2"/><circle cx="9.5" cy="15" r="2.2"/></symbol>
+        <symbol id="i-lapis" viewBox="0 0 24 24"><path d="m14.8 4.4 4.8 4.8L8.6 20.2l-5.6.8.8-5.6zm1.6-1.6 1.9-1.9 4.8 4.8-1.9 1.9z"/></symbol>
         <symbol id="i-desfazer" viewBox="0 0 24 24"><path d="M9 5 3.5 10.5 9 16v-3.8c4.6 0 7.6 1.4 9.7 5.3-.6-5.4-3.4-9.6-9.7-10.3z"/></symbol>
         <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M3 20.5 21.5 12 3 3.5v6.6l13 1.9-13 1.9z"/></symbol>
         <symbol id="i-osso" viewBox="0 0 24 24"><path d="M6.6 3.5a2.6 2.6 0 0 0-2.4 3.6 2.6 2.6 0 1 0 3.3 3.3l6.1 6.1a2.6 2.6 0 1 0 3.3 3.3 2.6 2.6 0 1 0 3.6-2.4 2.6 2.6 0 0 0-3.6-2.4l-6.1-6.1a2.6 2.6 0 0 0-4.2-5.4z"/></symbol>
@@ -93,8 +96,8 @@
     <div class="app">
       <aside class="lateral" id="lateral" aria-label="Menu">
         <div class="marca">
-          <svg class="marca-icone" aria-hidden="true"><use href="#i-pata"/></svg>
-          <div><strong>Coleira</strong><small>Monitor do pet</small></div>
+          <img class="marca-icone" src="icones/marca.svg" alt="" width="40" height="40" />
+          <div><strong>Vitalar</strong><small>Saúde e segurança</small></div>
         </div>
         <div class="lateral-pet">
           <span class="plaquinha pequena" aria-hidden="true"><span class="avatar" data-avatar></span></span>
@@ -239,10 +242,22 @@
                 <div class="dica-mapa" id="dicaMapa" hidden>Clique no mapa ou arraste o marcador da casa até o lugar certo.</div>
               </div>
               <div class="area">
+                <fieldset class="forma-area">
+                  <legend>Formato da área</legend>
+                  <div class="escolha">
+                    <label><input type="radio" name="formaArea" value="circulo" checked /><span><svg aria-hidden="true"><use href="#i-circulo"/></svg>Círculo</span></label>
+                    <label><input type="radio" name="formaArea" value="poligono" /><span><svg aria-hidden="true"><use href="#i-contorno"/></svg>Contorno do terreno</span></label>
+                  </div>
+                </fieldset>
                 <button id="btnMoverCasa" type="button" class="botao"><svg aria-hidden="true"><use href="#i-casa"/></svg><span>Mover a casa</span></button>
-                <div class="raio">
+                <div class="raio" id="grupoRaio">
                   <label for="raio">Raio da área segura <b id="raioValor">50 m</b></label>
                   <input type="range" id="raio" min="10" max="500" step="5" value="50" />
+                </div>
+                <div class="contorno" id="grupoContorno" hidden>
+                  <button id="btnDesenhar" type="button" class="botao"><svg aria-hidden="true"><use href="#i-lapis"/></svg><span>Desenhar ponto a ponto</span></button>
+                  <button id="btnRetangulo" type="button" class="botao"><svg aria-hidden="true"><use href="#i-contorno"/></svg>Recomeçar com retângulo</button>
+                  <p class="contorno-info" id="infoContorno" aria-live="polite"></p>
                 </div>
                 <div class="area-acoes">
                   <button id="btnDesfazer" type="button" class="botao" disabled title="Desfazer (Ctrl+Z)"><svg aria-hidden="true"><use href="#i-desfazer"/></svg><span>Desfazer</span><em id="contDesfazer" hidden></em></button>
@@ -251,6 +266,7 @@
                 </div>
               </div>
               <p class="dica" id="dicaArea">O círculo verde é a área em que o pet pode ficar sem gerar alerta.</p>
+              <ul class="avisos-area" id="avisosArea" hidden></ul>
             </section>
           </section>
 
@@ -390,7 +406,7 @@
                 <ol class="app-ios" id="appIOS" hidden>
                   <li>No Safari, toque em <b>Compartilhar</b> <svg class="ios-icone" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l4 4-1.4 1.4L13 5.8V15h-2V5.8L9.4 7.4 8 6zM5 10h3v2H6v8h12v-8h-2v-2h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V11a1 1 0 0 1 1-1z"/></svg>.</li>
                   <li>Escolha <b>Adicionar à Tela de Início</b>.</li>
-                  <li>Toque em <b>Adicionar</b>. O ícone da Coleira aparece junto dos seus apps.</li>
+                  <li>Toque em <b>Adicionar</b>. O ícone do Vitalar aparece junto dos seus apps.</li>
                 </ol>
               </div>
               <button type="button" class="botao primario" id="btnInstalar2" hidden><svg aria-hidden="true"><use href="#i-celular"/></svg>Instalar app</button>
@@ -568,6 +584,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" crossorigin="anonymous"></script>
-    <script type="module" src="script.js?v=2026-11-27d"></script>
+    <script type="module" src="script.js?v=2026-11-27g"></script>
   </body>
 </html>

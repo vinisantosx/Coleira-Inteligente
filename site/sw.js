@@ -5,7 +5,7 @@
 //   bibliotecas de CDN          cache primeiro (as URLs têm versão fixa, nunca mudam)
 //   blocos do mapa              cópia guardada na hora e atualizada por trás (até 300 blocos)
 //   Firebase (dados, login)     nunca passa por aqui: o próprio SDK guarda os dados offline
-const VERSAO = 'coleira-v1';
+const VERSAO = 'vitalar-v2';
 const SITE = VERSAO + '-site';
 const LIBS = VERSAO + '-libs';
 const MAPA = VERSAO + '-mapa';
@@ -13,8 +13,8 @@ const MAPA = VERSAO + '-mapa';
 const ESSENCIAIS = [
   './', 'index.html', 'perdido.html', 'bairro.html', 'style.css', 'manifest.webmanifest',
   'script.js', 'perdido.js', 'bairro.js', 'conta.js', 'comunidade.js', 'comunidade-ui.js', 'encontros.js',
-  'perfil-dados.js', 'saude.js', 'movimento.js', 'ajustes.js', 'pwa.js', 'firebase-config.js',
-  'icones/icone-192.png', 'icones/icone-512.png', 'icones/apple-touch-icon.png', 'icones/favicon-32.png', 'icones/icone.svg'
+  'perfil-dados.js', 'saude.js', 'area.js', 'movimento.js', 'ajustes.js', 'pwa.js', 'firebase-config.js',
+  'icones/icone-192.png', 'icones/icone-512.png', 'icones/apple-touch-icon.png', 'icones/favicon-32.png', 'icones/icone.svg', 'icones/favicon.svg', 'icones/marca.svg'
 ];
 const HOSTS_LIBS = ['unpkg.com', 'cdnjs.cloudflare.com', 'www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 

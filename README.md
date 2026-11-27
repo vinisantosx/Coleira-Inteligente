@@ -28,7 +28,9 @@ ESP32 (coleira) ──Wi-Fi──> Firestore <──> Site do tutor (Leaflet)
 
 1. Abra a pasta `site/` no VS Code e rode com a extensão **Live Server**. Como o `script.js` é um módulo, abrir o `index.html` com dois cliques não funciona.
 2. Sem o Firebase configurado, o site entra em **modo simulação**. Use os botões "Simular fora da área", "Remover / colocar coleira" e "Iniciar fuga simulada".
-3. Para mudar a casa, clique em "Mover casa" e depois no mapa, ou arraste a casinha. Ajuste o raio e clique em "Salvar área".
+3. Para mudar a casa, clique em "Mover a casa" e depois no mapa, ou arraste a casinha. Escolha o formato da área segura e clique em "Salvar área segura":
+   - **Círculo:** a casa no centro e um raio (de 10 a 500 m). Rápido, mas num condomínio ou numa casa pequena o círculo pode incluir a rua ou o vizinho.
+   - **Contorno do terreno:** o site começa com um retângulo em volta da casa. Arraste os cantos até o muro, toque no **+** no meio de um lado para criar um canto e toque num canto para removê-lo. Também dá para **Desenhar ponto a ponto**, tocando em cada canto do terreno (de 3 a 16 cantos). O site não deixa salvar um contorno que cruza a si mesmo e avisa quando a casa ficou fora dele ou quando a área está mais estreita que o erro do GPS.
    - **Desfazer** (ou Ctrl+Z) volta uma alteração por vez, e **Cancelar** descarta todas as alterações.
    - Os alertas só passam a usar a nova área depois de salvar.
    - Depois de salvar, um aviso com **Desfazer** fica alguns segundos na tela e restaura a área anterior.
@@ -187,13 +189,17 @@ Como funciona: o núcleo 1 lê o GPS, o MAX30102 e a bateria e controla o LED. O
 
 ### Como a coleira decide que o pet saiu da área
 
-A cada segundo, o núcleo 1 lê o GPS e calcula a distância até o limite da área segura (hoje, um círculo: centro na casa e o raio salvo no site). Enquanto o pet anda dentro, a posição só atualiza o mapa (envio a cada 10 s pelo Wi-Fi). O aviso sai apenas quando o estado muda, com três proteções contra a imprecisão do GPS (5 a 15 m):
+A cada segundo, o núcleo 1 lê o GPS e calcula a distância até o limite da área segura: no círculo, a distância até a casa menos o raio; no contorno, o teste de "ponto dentro do polígono" (quantos lados uma linha a partir do pet cruza) e a distância até o lado mais próximo. Enquanto o pet anda dentro, a posição só atualiza o mapa (envio a cada 10 s pelo Wi-Fi). O aviso sai apenas quando o estado muda, com três proteções contra a imprecisão do GPS (5 a 15 m):
 
-- **Margem:** "saiu" só conta além de raio + 10 m e "voltou" só aquém de raio − 10 m. Parado perto da borda, o pet não gera avisos em sequência. Em áreas pequenas a margem encolhe (no máximo 1/3 do raio).
+- **Margem:** "saiu" só conta a mais de 10 m além do limite e "voltou" só a mais de 10 m para dentro. Parado perto da borda, o pet não gera avisos em sequência. Em áreas pequenas a margem encolhe (no máximo 1/3 da "meia largura" da área: o raio, no círculo; 2 × área ÷ perímetro, no contorno).
 - **Confirmação:** são precisas 5 leituras boas seguidas do mesmo lado (cerca de 5 s). O ponto enviado no aviso é o da primeira delas, onde o pet cruzou o limite.
 - **Leituras ruins não decidem:** com menos de 5 satélites ou HDOP acima de 2,5 (erro de ~12 m ou mais), a posição aparece no mapa mas não muda o estado.
 
-Para ajustar, defina no `config.h` (são opcionais): `MARGEM_AREA_M`, `CONFIRMA_LEITURAS`, `GPS_SATS_MIN` e `GPS_HDOP_MAX`. Dica: deixe o raio **menor que o alcance do Wi-Fi**, para o aviso ser enviado enquanto ainda há sinal.
+Para ajustar, defina no `config.h` (são opcionais): `MARGEM_AREA_M`, `CONFIRMA_LEITURAS`, `GPS_SATS_MIN` e `GPS_HDOP_MAX`. Dica: deixe a área **dentro do alcance do Wi-Fi**, para o aviso ser enviado enquanto ainda há sinal.
+
+**Limite do GPS:** o contorno resolve o "círculo que pega a rua", mas não deixa o GPS mais preciso. Com lados de menos de ~20 m (um quintal pequeno), nenhum formato distingue com segurança dentro de fora. Nesses casos, combine com outro sinal de proximidade, como "a coleira perdeu o Wi-Fi de casa".
+
+Formato salvo em `pets/{pet}/config/area`: `{ forma: 'circulo' | 'poligono', lat, lng, raio, pontos: [{ lat, lng }, ...] }`. No contorno, `lat`/`lng` é a casa e `raio` é o círculo que cobre o contorno (usado como reserva por firmwares antigos). As regras do Firestore aceitam de 3 a 16 cantos: acima de ~18 a regra estoura o limite de 1000 operações por verificação. **Publique o `site/firestore.rules` atualizado no console do Firebase**, senão o contorno não salva.
 
 LED: pisca rápido quando o pet está fora da área (para quem encontrar o pet), dá uma piscada curta a cada 2 s enquanto procura satélites e a cada 5 s quando está tudo bem.
 

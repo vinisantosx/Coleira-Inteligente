@@ -104,11 +104,38 @@ service cloud.firestore {
         && (request.resource.data.get('layout', {}) is map && request.resource.data.get('layout', {}).size() <= 10);
     }
 
+    // ---------------------------------------------------------------- área segura
+    // Círculo (lat, lng, raio) ou polígono desenhado no site (3 a 16 cantos {lat, lng}).
+    // 16 é o teto seguro: acima de ~18 a regra estoura o limite de 1000 operações do Firestore.
+    // Documentos antigos, só com o círculo, continuam válidos.
+    function coordOk(la, ln) { return la is number && ln is number && la >= -90 && la <= 90 && ln >= -180 && ln <= 180; }
+    function pontoOk(l, i) {
+      // barato de propósito (limite de 1000 operações por regra): só tipos; a coleira descarta cantos a mais de 5 km
+      return i >= l.size() || (l[i] is map && l[i].keys().hasOnly(['lat', 'lng']) && l[i].lat is number && l[i].lng is number);
+    }
+    function pontosOk(l) {
+      return l is list && l.size() >= 3 && l.size() <= 16
+        && pontoOk(l, 0) && pontoOk(l, 1) && pontoOk(l, 2) && pontoOk(l, 3) && pontoOk(l, 4)
+        && pontoOk(l, 5) && pontoOk(l, 6) && pontoOk(l, 7) && pontoOk(l, 8) && pontoOk(l, 9)
+        && pontoOk(l, 10) && pontoOk(l, 11) && pontoOk(l, 12) && pontoOk(l, 13) && pontoOk(l, 14)
+        && pontoOk(l, 15);
+    }
+    function areaValida(d) {
+      return d.keys().hasOnly(['lat', 'lng', 'raio', 'forma', 'pontos', 'atualizadoEm'])
+        && coordOk(d.get('lat', null), d.get('lng', null))
+        && d.get('raio', null) is number && d.raio >= 5 && d.raio <= 5000
+        && d.get('forma', 'circulo') in ['circulo', 'poligono']
+        && (d.get('forma', 'circulo') == 'circulo' || pontosOk(d.get('pontos', null)));
+    }
+
     // ---------------------------------------------------------------- dados privados do pet
     match /pets/{pet} {
       allow read, write: if ehDonoOuColeira(pet);
 
-      match /config/{doc} { allow read, write: if ehDonoOuColeira(pet); }
+      match /config/{doc} {
+        allow read: if ehDonoOuColeira(pet);
+        allow write: if ehDonoOuColeira(pet) && (doc != 'area' || areaValida(request.resource.data));
+      }
       match /saude/{dia}  { allow read, write: if ehDonoOuColeira(pet); }
 
       match /alertas/{id} {
