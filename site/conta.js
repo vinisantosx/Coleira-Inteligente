@@ -8,6 +8,7 @@ const ERROS = {
   'auth/user-not-found': 'E-mail ou senha incorretos.',
   'auth/invalid-email': 'Esse e-mail não parece válido.',
   'auth/email-already-in-use': 'Já existe uma conta com esse e-mail. Use "Entrar".',
+  'auth/credential-already-in-use': 'Já existe uma conta com esse e-mail. Use "Entrar".',
   'auth/weak-password': 'A senha precisa ter pelo menos 8 caracteres.',
   'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos e tente de novo.',
   'auth/network-request-failed': 'Sem conexão com a internet.',
@@ -26,7 +27,7 @@ export async function exigirLogin({ titulo = 'Entrar', texto = '' } = {}) {
     fundo.className = 'login-fundo';
     fundo.innerHTML = `
       <form class="login-cartao" novalidate>
-        <p class="login-marca">Coleira</p>
+        <p class="login-marca">Vitalar</p>
         <h1></h1>
         <p class="dica login-texto"></p>
         <label class="campo">E-mail <input name="email" type="email" autocomplete="email" required></label>
@@ -68,8 +69,12 @@ export async function exigirLogin({ titulo = 'Entrar', texto = '' } = {}) {
       if (criando && senha.length < 8) { st.textContent = ERROS['auth/weak-password']; st.className = 'qr-status erro'; return; }
       botao.disabled = true; st.textContent = 'Aguarde...'; st.className = 'qr-status';
       try {
+        // Quem já usou o site sem conta (ex.: avisou pelo QR) mantém a mesma identidade ao criar a conta:
+        // assim os selos de boa ação que ganhou continuam com a pessoa.
         const r = criando
-          ? await au.createUserWithEmailAndPassword(auth, email, senha)
+          ? (auth.currentUser?.isAnonymous
+            ? await au.linkWithCredential(auth.currentUser, au.EmailAuthProvider.credential(email, senha))
+            : await au.createUserWithEmailAndPassword(auth, email, senha))
           : await au.signInWithEmailAndPassword(auth, email, senha);
         fundo.remove();
         resolver(r.user);

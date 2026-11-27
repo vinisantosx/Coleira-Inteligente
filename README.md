@@ -55,8 +55,9 @@ ESP32 (coleira) ──Wi-Fi──> Firestore <──> Site do tutor (Leaflet)
 | Encontros pelo QR | `pets/{pet}/encontros` | tutor e quem criou | quem achou cria; tutor e quem achou conversam |
 | Perfil do QR (nome, foto, recado, telefone, perdido) | `perfis/{pet}` | qualquer pessoa, só pelo id (não dá para listar) | tutor; a coleira só muda `perdido` |
 | Rede do bairro | `vizinhos`, `bairro`, `denuncias` | ver "Rede de alerta do bairro" | |
+| Selos de boa ação | `reconhecimentos` | qualquer pessoa logada (sem local nem contato) | só o dono do pet, por uma ajuda real |
 
-A posição da coleira em casa revela o endereço, por isso ela nunca é pública. As regras foram testadas no emulador do Firebase com 76 casos (estranho, quem achou o pet, vizinho, coleira antiga, campos extras), e o site foi testado de ponta a ponta contra os emuladores.
+A posição da coleira em casa revela o endereço, por isso ela nunca é pública. As regras foram testadas no emulador do Firebase com 123 casos (estranho, quem achou o pet, vizinho, coleira antiga, campos extras, área desenhada, tentativas de fraude nos selos), e o site foi testado de ponta a ponta contra os emuladores.
 
 **Testar com os emuladores (opcional):** `npx firebase emulators:start --only firestore,auth` (Firestore na porta 8089, Auth na 9099) e abra o site em `localhost` com `?emulador` no endereço.
 
@@ -129,6 +130,32 @@ Como a privacidade é garantida (nas regras, não só na tela):
 Só o dono de um pet com coleira pode publicar o alerta desse pet, e só um alerta por pet. A rede exige conta com e-mail (logins anônimos não veem nada). Os pets que estão em casa nunca aparecem.
 
 Na simulação, a rede já vem com dois pets perdidos de exemplo. O botão **Vizinhos ajudando na busca** (área de testes) simula vizinhos procurando e um avistamento do seu pet.
+
+## Selos de boa ação
+
+Quem ajuda a recuperar um pet ganha um reconhecimento visível na plataforma. Quem dá o selo é o **tutor do pet**, nunca a própria pessoa:
+
+- **Pelo QR:** depois de marcar o pet como encontrado, o encontro mostra **"Devolveu {pet}"** ou **"Ajudou a encontrar"**. Quem avisou pelo QR vê o selo na própria página do QR.
+- **Na rede do bairro:** no alerta do pet (ativo ou recém-encerrado), cada vizinho que procurou junto ou disse onde viu aparece com um botão **Agradecer**.
+
+| Selo | Como ganhar |
+|---|---|
+| Olhar Atento | Ajudar uma família a procurar o pet |
+| Anjo dos Pets | Encontrar e devolver um pet |
+| Guardião dos Animais | Ajudar 3 famílias diferentes |
+| Protetor do Bairro | Ajudar 10 famílias diferentes |
+
+O selo principal aparece ao lado do apelido nos alertas da rede do bairro, nos avistamentos e no encontro pelo QR. Cada pessoa vê os seus selos e o progresso em **Configurações > Seus selos de boa ação**.
+
+**Contra fraude** (garantido pelas regras do Firestore, não só pelo app):
+- Só o dono do pet reconhece alguém, e só por uma ajuda que existe: o encontro pelo QR, o avistamento ou o "estou procurando" daquele pet, feito por aquela pessoa.
+- "Devolveu" só vale depois que o encontro foi encerrado (o pet voltou).
+- Um reconhecimento por ajuda, sem edição, e ninguém reconhece a si mesmo.
+- Os selos maiores contam **famílias diferentes**, então um tutor sozinho não consegue "fabricar" um Guardião.
+- O reconhecimento não guarda local, telefone nem mensagem. O tutor pode retirar o que deu, e quem recebeu pode recusar.
+- Quem avisou pelo QR sem conta e depois cria uma conta no mesmo celular mantém a identidade, e com ela os selos.
+
+Na simulação, a **Área de testes** tem "Simular selos recebidos", e os vizinhos de exemplo já têm selos.
 
 ## Saúde comparada com o próprio pet
 

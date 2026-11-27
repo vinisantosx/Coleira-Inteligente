@@ -249,6 +249,39 @@ service cloud.firestore {
         && (d.precisao == null || d.precisao is number) && d.em == request.time;
     }
 
+    // ---------------------------------------------------------------- selos de boa ação
+    // Só o DONO do pet reconhece alguém, e só por uma ajuda que existe de verdade:
+    //   encontro pelo QR (o autor do encontro), avistamento (o autor) ou "estou procurando" (o ajudante).
+    // "devolveu" só vale para encontro já encerrado. Um reconhecimento por ajuda (id fixo),
+    // ninguém reconhece a si mesmo e não há edição. Sem local, telefone ou mensagem: só quem, qual pet e o tipo.
+    // Os selos maiores contam famílias diferentes (campo "de"), calculados no app.
+    match /reconhecimentos/{id} {
+      allow read: if logado();
+      allow create: if reconhecimentoValido(id);
+      // o tutor pode retirar o que deu; quem recebeu pode recusar (some dos selos dele)
+      allow delete: if logado() && (resource.data.de == request.auth.uid || resource.data.para == request.auth.uid);
+    }
+    function reconhecimentoValido(id) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['para', 'de', 'pet', 'origem', 'origemId', 'tipo', 'criadoEm'])
+        && d.pet is string && idPetValido(d.pet) && ehDono(d.pet)
+        && d.de == request.auth.uid && d.para is string && d.para != request.auth.uid
+        && d.origemId is string && d.origemId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && id == d.pet + '__' + d.origem + '__' + d.origemId
+        && d.criadoEm == request.time
+        && ajudaExiste(d);
+    }
+    function ajudaExiste(d) {
+      return (d.origem == 'encontro' && d.tipo in ['devolveu', 'ajudou']
+          && get(/databases/$(database)/documents/pets/$(d.pet)/encontros/$(d.origemId)).data.autor == d.para
+          && (d.tipo == 'ajudou'
+              || get(/databases/$(database)/documents/pets/$(d.pet)/encontros/$(d.origemId)).data.status == 'resolvido'))
+        || (d.origem == 'avistamento' && d.tipo == 'ajudou'
+          && get(/databases/$(database)/documents/bairro/$(d.pet)/avistamentos/$(d.origemId)).data.autor == d.para)
+        || (d.origem == 'ajudante' && d.tipo == 'ajudou' && d.origemId == d.para
+          && exists(/databases/$(database)/documents/bairro/$(d.pet)/ajudantes/$(d.para)));
+    }
+
     // denúncias: qualquer vizinho envia, ninguém lê pelo app (moderação pelo console)
     match /denuncias/{id} {
       allow create: if membro()

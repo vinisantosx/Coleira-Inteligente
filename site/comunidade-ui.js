@@ -6,6 +6,10 @@ import {
   simularVizinhos, celulaDe, centroCelula, distanciaKm, RAIO_AREA_M, souEu
 } from './comunidade.js';
 import { urlPaginaQR } from './perfil-dados.js';
+import {
+  iniciarSelos, selosDe, seloChip, reconhecer, retirarReconhecimento, reconhecimentosQueDei, idReconhecimento,
+  aoMudarSelos, meuUidSelos
+} from './selos.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fotoSegura = (f) => (typeof f === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(f) ? f : '');
@@ -104,7 +108,7 @@ export async function montarComunidade(raiz, opcoes = {}) {
   // opcoes.area: { lat, lng } para "usar a região da área segura"
   // opcoes.avisar(texto): som/notificação; opcoes.aoContar(n): selo no menu
   const pet = opcoes.pet || null;
-  await iniciarComunidade();
+  await Promise.all([iniciarComunidade(), iniciarSelos()]);
   raiz.innerHTML = MOLDE;
   const $ = (n) => raiz.querySelector(`[data-bz="${n}"]`);
 
@@ -114,6 +118,29 @@ export async function montarComunidade(raiz, opcoes = {}) {
   let meuAlerta = null, meusAvist = [], meusAjud = [];
   const ajudantes = {};            // pet -> lista
   const pararAjud = {};
+  // selos de boa ação: uid -> resumo (carregado aos poucos, sem repetir pedidos)
+  const selos = {};
+  const pedidos = new Set();
+  let dei = new Set();             // ids de reconhecimentos que este tutor já deu (para o pet dele)
+  function pedirSelos(uids) {
+    const novos = [...new Set(uids)].filter((u) => u && !pedidos.has(u));
+    if (!novos.length) return;
+    novos.forEach((u) => pedidos.add(u));
+    selosDe(novos).then((r) => { Object.assign(selos, r); if (vizinho) { renderLista(); renderMeu(); mostrarEu(); } })
+      .catch((err) => console.error('selos', err));
+  }
+  const comSelo = (uid, apelido, curto = true) => `${esc(apelido)}${seloChip(selos[uid], { curto })}`;
+  async function carregarDei() {
+    if (!pet) return;
+    try { dei = new Set((await reconhecimentosQueDei(pet.id)).map((r) => r.id)); } catch (err) { console.error('selos dados', err); }
+    renderMeu();
+  }
+  aoMudarSelos(() => {
+    Object.keys(selos).forEach((k) => delete selos[k]);
+    pedidos.clear();
+    carregarDei();
+    if (vizinho) { renderLista(); mostrarEu(); }
+  });
   let pararAlertas = null, pararMeu = null, pararAvist = null;
   let conhecidos = null;           // ids de alertas já vistos (para avisar só os novos)
   let mapa = null, camada = null, camadaEu = null;
@@ -184,6 +211,16 @@ export async function montarComunidade(raiz, opcoes = {}) {
     pararTudo();
   }
 
+  function mostrarEu() {
+    if (!vizinho) return;
+    const uid = meuUidSelos(), info = uid ? selos[uid] : null;
+    if (uid) pedirSelos([uid]);
+    const selo = info?.principal
+      ? `<br>${seloChip(info)} <span class="bz-selo-conta">${info.familias} ${info.familias === 1 ? 'família ajudada' : 'famílias ajudadas'}</span>`
+      : '';
+    $('euTexto').innerHTML = `<b>${esc(vizinho.apelido)}</b>, ${esc(vizinho.bairro)}<br>Alertas num raio de ${vizinho.raio} km da sua região.${selo}`;
+  }
+
   function pararTudo() {
     pararAlertas?.(); pararAlertas = null;
     Object.values(pararAjud).forEach((f) => f?.()); Object.keys(pararAjud).forEach((k) => delete pararAjud[k]);
@@ -191,7 +228,7 @@ export async function montarComunidade(raiz, opcoes = {}) {
 
   function mostrarPainel() {
     $('entrar').hidden = true; $('painel').hidden = false;
-    $('euTexto').innerHTML = `<b>${esc(vizinho.apelido)}</b>, ${esc(vizinho.bairro)}<br>Alertas num raio de ${vizinho.raio} km da sua região.`;
+    mostrarEu();
     $('chkNotif').checked = notifLigada();
     $('convidar').href = 'https://wa.me/?text=' + encodeURIComponent(
       `Entrei na rede de alerta de pets do bairro ${vizinho.bairro}: quando um pet some, os vizinhos são avisados e ajudam a procurar. Ninguém vê onde você mora. Participe: ${new URL('bairro.html', location.href).href}`);
@@ -202,6 +239,7 @@ export async function montarComunidade(raiz, opcoes = {}) {
     conhecidos = null;
     pararAlertas = ouvirAlertasPerto(vizinho.celula, (r) => { ativos = r.ativos; recuperados = r.recuperados; aoMudarAlertas(); });
     if (pet && !pararMeu) {
+      carregarDei();
       pararMeu = ouvirMeuAlerta(pet.id, (a) => { meuAlerta = a; renderMeu(); });
       pararAvist = ouvirAvistamentos(pet.id, (l) => { meusAvist = l; renderMeu(); desenharMapa(); });
     }
@@ -286,6 +324,7 @@ export async function montarComunidade(raiz, opcoes = {}) {
       const meu = pet && a.pet === pet.id;
       const ajud = ajudAtuais(a);
       const euAjudo = ajud.some((x) => souEu(x.uid));
+      pedirSelos(ajud.slice(0, 4).map((x) => x.uid));
       const km = distanciaKm(eu, centroCelula(a.celula));
       const foto = fotoSegura(a.foto);
       const el = document.createElement('article');
@@ -299,7 +338,7 @@ export async function montarComunidade(raiz, opcoes = {}) {
           </div>
         </div>
         ${a.descricao ? `<p class="bz-desc">${esc(a.descricao)}</p>` : ''}
-        <p class="bz-ajudando">${ajud.length ? `${ajud.length} ${ajud.length === 1 ? 'vizinho procurando' : 'vizinhos procurando'}: ${ajud.slice(0, 4).map((x) => esc(x.apelido)).join(', ')}${ajud.length > 4 ? '...' : ''}` : 'Ninguém procurando ainda'}</p>
+        <p class="bz-ajudando">${ajud.length ? `${ajud.length} ${ajud.length === 1 ? 'vizinho procurando' : 'vizinhos procurando'}: ${ajud.slice(0, 4).map((x) => comSelo(x.uid, x.apelido)).join(', ')}${ajud.length > 4 ? '...' : ''}` : 'Ninguém procurando ainda'}</p>
         ${meu ? '' : `
         <div class="bz-acoes">
           <button type="button" class="pilula ${euAjudo ? 'ok-btn' : 'leve'}" data-acao="procurar"><svg aria-hidden="true"><use href="#i-vizinhos"/></svg>${euAjudo ? '✓ Estou procurando' : 'Estou procurando'}</button>
@@ -360,6 +399,8 @@ export async function montarComunidade(raiz, opcoes = {}) {
     const ativo = meuAlerta?.status === 'ativo';
     const nome = esc(pet.nome());
     const rascunho = box.querySelector('textarea[name="descricao"]')?.value;
+    if (meuAlerta && !pararAjud[pet.id]) pararAjud[pet.id] = ouvirAjudantes(pet.id, (l) => { ajudantes[pet.id] = l; renderMeu(); renderLista(); });
+    const ajudMeu = meuAlerta ? ((ajudantes[pet.id] && ajudAtuais({ ...meuAlerta, pet: pet.id })) || []) : [];
     if (!ativo) {
       const perdido = pet.perdido();
       box.className = 'cartao bz-meu' + (perdido ? ' pedir' : '');
@@ -373,7 +414,9 @@ export async function montarComunidade(raiz, opcoes = {}) {
         </label>
         <p class="dica">Não coloque endereço, valor do pet nem recompensa em dinheiro: isso atrai golpistas.</p>
         <button type="button" class="pilula perigo" data-bz="btnPublicar" ${perdido ? '' : 'disabled'}><svg aria-hidden="true"><use href="#i-megafone"/></svg>Publicar alerta no bairro</button>
-        <p class="qr-status" data-bz="statusMeu" role="status"></p>`;
+        <p class="qr-status" data-bz="statusMeu" role="status"></p>
+        ${!perdido && meuAlerta?.status === 'resolvido' ? blocoAgradecer(ajudMeu, avistAtuais(), `Quem ajudou a encontrar ${nome}`) : ''}`;
+      ligarAgradecer(box);
       const ta = box.querySelector('textarea[name="descricao"]');
       ta.value = rascunho ?? pet.descricao?.() ?? '';
       box.querySelector('[data-bz="btnPublicar"]').addEventListener('click', () => publicarMeu(ta.value));
@@ -386,15 +429,17 @@ export async function montarComunidade(raiz, opcoes = {}) {
     box.innerHTML = `
       <h2>Alerta de ${nome} publicado</h2>
       <p class="dica">Publicado ${quando(meuAlerta.desde)} no bairro ${esc(meuAlerta.bairro)}. Vizinhos num raio de até 3 km recebem.</p>
-      <p class="bz-ajudando">${ajud.length ? `<b>${ajud.length}</b> ${ajud.length === 1 ? 'vizinho procurando' : 'vizinhos procurando'}: ${ajud.map((x) => esc(x.apelido)).join(', ')}` : 'Aguardando vizinhos...'}</p>
+      <p class="bz-ajudando">${ajud.length ? `<b>${ajud.length}</b> ${ajud.length === 1 ? 'vizinho procurando' : 'vizinhos procurando'}: ${ajud.map((x) => comSelo(x.uid, x.apelido)).join(', ')}` : 'Aguardando vizinhos...'}</p>
       <h3>Avistamentos <small>(só você vê o ponto exato)</small></h3>
       <ul class="bz-avist">${avs.length ? avs.map((v, i) => `
-        <li><div><b>${esc(v.apelido)}</b> viu ${quando(v.em)}${v.precisao ? ` (precisão de ~${v.precisao} m)` : ''}${v.nota ? `<br><span>${esc(v.nota)}</span>` : ''}</div>
+        <li><div><b>${comSelo(v.autor, v.apelido)}</b> viu ${quando(v.em)}${v.precisao ? ` (precisão de ~${v.precisao} m)` : ''}${v.nota ? `<br><span>${esc(v.nota)}</span>` : ''}</div>
         <div class="bz-linha"><button type="button" class="pilula leve" data-ver="${i}"><svg aria-hidden="true"><use href="#i-mapa"/></svg>Ver no mapa</button>
         <a class="pilula leve" target="_blank" rel="noopener" href="${linkRota(v.lat, v.lng)}">Traçar rota</a></div></li>`).join('') : '<li class="vazio">Quando um vizinho disser onde viu, aparece aqui e no mapa.</li>'}</ul>
+      ${blocoAgradecer(ajud, avs, 'Agradeça quem está ajudando')}
       <div class="bz-linha">
         <button type="button" class="pilula leve" data-bz="btnEncerrar"><svg aria-hidden="true"><use href="#i-check"/></svg>Encerrar alerta</button>
       </div>`;
+    ligarAgradecer(box);
     box.querySelectorAll('[data-ver]').forEach((b) => b.addEventListener('click', () => {
       const v = avs[+b.dataset.ver];
       mapa?.flyTo([v.lat, v.lng], 17);
@@ -403,6 +448,54 @@ export async function montarComunidade(raiz, opcoes = {}) {
     box.querySelector('[data-bz="btnEncerrar"]').addEventListener('click', async () => {
       try { await encerrarAlerta(pet.id); } catch (err) { alert(err.message); }
     });
+  }
+
+  // ---------------------------------------------------------------- agradecer (selos)
+  // Uma linha por pessoa: quem procurou junto e quem disse onde viu. O tutor dá o reconhecimento;
+  // as regras do Firestore conferem que a ajuda existe e que é dessa pessoa.
+  function quemAjudou(ajud, avs) {
+    const pessoas = new Map();
+    ajud.forEach((x) => pessoas.set(x.uid, { uid: x.uid, apelido: x.apelido, origem: 'ajudante', origemId: x.uid, fez: 'procurou junto' }));
+    avs.forEach((v) => {
+      if (!v.autor || !v.id) return;
+      const p = pessoas.get(v.autor);
+      if (p) p.fez = 'procurou junto e disse onde viu';
+      else pessoas.set(v.autor, { uid: v.autor, apelido: v.apelido, origem: 'avistamento', origemId: v.id, fez: 'disse onde viu' });
+    });
+    return [...pessoas.values()].filter((p) => !souEu(p.uid));
+  }
+  let pessoasAgradecer = [];
+  function blocoAgradecer(ajud, avs, titulo) {
+    pessoasAgradecer = quemAjudou(ajud, avs);
+    if (!pessoasAgradecer.length) return '';
+    pedirSelos(pessoasAgradecer.map((p) => p.uid));
+    return `<h3>${esc(titulo)}</h3>
+      <p class="dica">O agradecimento vira selo no perfil da pessoa (Olhar Atento, Guardião dos Animais...). Os outros vizinhos veem o selo ao lado do apelido.</p>
+      <ul class="bz-agradecer">${pessoasAgradecer.map((p, i) => {
+        const id = idReconhecimento(pet.id, p.origem, p.origemId), feito = dei.has(id);
+        return `<li><div><b>${comSelo(p.uid, p.apelido, false)}</b><small>${esc(p.fez)}</small></div>
+          ${feito
+            ? `<span class="bz-linha"><span class="bz-agradecido"><svg aria-hidden="true"><use href="#i-check"/></svg>Agradecido</span><button type="button" class="link-botao" data-desagradecer="${i}">Desfazer</button></span>`
+            : `<button type="button" class="pilula leve" data-agradecer="${i}"><svg aria-hidden="true"><use href="#i-coracao"/></svg>Agradecer</button>`}</li>`;
+      }).join('')}</ul>`;
+  }
+  function ligarAgradecer(box) {
+    box.querySelectorAll('[data-agradecer]').forEach((b) => b.addEventListener('click', async () => {
+      const p = pessoasAgradecer[+b.dataset.agradecer];
+      b.disabled = true;
+      try {
+        const id = await reconhecer({ pet: pet.id, origem: p.origem, origemId: p.origemId, para: p.uid, tipo: 'ajudou' });
+        dei.add(id);
+        opcoes.avisar?.(`Obrigado enviado para ${p.apelido}.`);
+      } catch (err) { console.error(err); alert('Não foi possível agradecer: ' + err.message); }
+      renderMeu();
+    }));
+    box.querySelectorAll('[data-desagradecer]').forEach((b) => b.addEventListener('click', async () => {
+      const p = pessoasAgradecer[+b.dataset.desagradecer];
+      const id = idReconhecimento(pet.id, p.origem, p.origemId);
+      try { await retirarReconhecimento(id, p.uid); dei.delete(id); } catch (err) { alert('Não foi possível desfazer: ' + err.message); }
+      renderMeu();
+    }));
   }
 
   async function publicarMeu(descricao) {

@@ -10,6 +10,7 @@
 // abertos em abas do mesmo navegador conversam entre si.
 import { PET_ID } from './firebase-config.js';
 import { configurado, abrirFirestore, entrarAnonimo, perfilLocal, salvarPerfilLocal, CHAVE_PERFIL } from './perfil-dados.js';
+import { ACHADOR_SIMULACAO } from './selos.js';
 
 const CHAVE = 'coleira-encontros-' + PET_ID;
 const EVENTO = 'encontros-mudou';
@@ -49,7 +50,7 @@ export async function criarEncontro(dados) {
   }
   const id = 'enc_' + Date.now().toString(36);
   const todos = lerLocal();
-  todos[id] = { ...base, criadoEm: new Date().toISOString(), mapaEm: dados.lat ? new Date().toISOString() : null };
+  todos[id] = { ...base, autor: ACHADOR_SIMULACAO, criadoEm: new Date().toISOString(), mapaEm: dados.lat ? new Date().toISOString() : null };
   gravarLocal(todos);
   return id;
 }

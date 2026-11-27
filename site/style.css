@@ -1055,3 +1055,47 @@ html[data-topo='colorido'] body:not([data-perdido='true']) .plaquinha .onda { bo
   .conteudo { padding-bottom: max(56px, env(safe-area-inset-bottom)); }
   .aviso { bottom: max(20px, env(safe-area-inset-bottom)); }
 }
+
+/* ==========================================================================
+   Selos de boa ação
+   ========================================================================== */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.selo-olhar { --selo: #2f6fa8; --selo-fundo: #e4eef8; }
+.selo-anjo { --selo: #8a4fb8; --selo-fundo: #f2e8f9; }
+.selo-guardiao { --selo: #2e7d57; --selo-fundo: #e2f2e8; }
+.selo-protetor { --selo: #a87408; --selo-fundo: #fbf0d0; }
+.selo-chip {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: 5px; padding: 1px 8px 1px 4px; vertical-align: 1px;
+  border-radius: 999px; background: var(--selo-fundo); color: var(--selo); font-size: 0.78rem; font-weight: 700; line-height: 1.5;
+  white-space: nowrap;
+}
+.selo-chip svg { width: 15px; height: 15px; fill: var(--selo); flex: none; }
+.selo-chip:has(.sr-only) { padding: 2px; }
+.selo-medalhas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.selo-medalha { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--linha); }
+.selo-medalha.ganho { background: var(--selo-fundo); border-color: transparent; }
+.selo-disco { width: 46px; height: 46px; flex: none; display: grid; place-items: center; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px var(--selo); }
+.selo-disco svg { width: 26px; height: 26px; fill: var(--selo); }
+.selo-medalha.falta .selo-disco { box-shadow: 0 0 0 2px var(--linha); }
+.selo-medalha.falta .selo-disco svg { fill: #b9c2bd; }
+.selo-medalha.falta b { color: var(--suave); }
+.selo-texto { display: grid; gap: 2px; }
+.selo-texto small { color: var(--suave); font-size: 0.82rem; }
+.selo-medalha.ganho.chegou .selo-disco { animation: carimbo 0.6s ease-out; }
+.selo-progresso { margin: 12px 0 0; font-size: 0.9rem; }
+.selo-barra { height: 8px; border-radius: 99px; background: var(--linha); overflow: hidden; margin-top: 6px; max-width: 320px; }
+.selo-barra span { display: block; height: 100%; background: var(--grama); border-radius: inherit; transition: width 0.5s; }
+.link-botao { background: none; border: 0; padding: 0; color: var(--suave); text-decoration: underline; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.link-botao:hover { color: var(--tinta); }
+.bz-selo-conta { font-size: 0.82rem; color: var(--suave); }
+.bz-agradecer { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 8px; }
+.bz-agradecer li { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 12px; background: var(--fundo); }
+.bz-agradecer li > div { display: grid; gap: 2px; }
+.bz-agradecer small { color: var(--suave); font-size: 0.82rem; }
+.bz-agradecido { display: inline-flex; align-items: center; gap: 5px; color: var(--grama); font-weight: 650; font-size: 0.9rem; }
+.bz-agradecido svg { width: 16px; height: 16px; fill: currentColor; }
+.reconhecer { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--fundo); display: grid; gap: 8px; }
+.reconhecer p { margin: 0; font-size: 0.9rem; }
+.reconhecer .bz-linha { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.qr-selo { margin: 14px 0 0; padding: 14px; border-radius: 16px; background: var(--selo-fundo); display: flex; align-items: center; gap: 14px; }
+.qr-selo p { margin: 0; }

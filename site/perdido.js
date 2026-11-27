@@ -7,6 +7,7 @@ import {
   telefoneWhatsApp, telefoneBonito, CHAVE_PERFIL, reduzirFoto
 } from './perfil-dados.js';
 import { iniciarEncontros, criarEncontro, atualizarEncontro, responder, ouvirEncontro, marcarNoPerfil, STATUS } from './encontros.js';
+import { iniciarSelos, reconhecimentosDe, calcularSelos, seloPorId, aoMudarSelos } from './selos.js';
 
 const $ = (id) => document.getElementById(id);
 const pet = new URLSearchParams(location.search).get('pet') || PET_ID;
@@ -23,7 +24,7 @@ const valorRadio = (nome) => document.querySelector(`input[name="${nome}"]:check
 function mostrarPerfil(p) {
   perfil = { ...PERFIL_PADRAO, ...p };
   document.body.dataset.perdido = String(!!perfil.perdido);
-  document.title = perfil.perdido ? `${perfil.nome} está perdido!` : `Encontrou ${perfil.nome}?`;
+  document.title = perfil.perdido ? `${perfil.nome} está perdido!` : `Encontrou ${perfil.nome}? | Vitalar`;
   $('nome').textContent = perfil.nome;
   document.querySelectorAll('[data-nome]').forEach((el) => { el.textContent = perfil.nome; });
   const jaAvisado = !!perfil.encontrado;
@@ -150,6 +151,44 @@ async function enviar(comLocalizacao) {
 $('btnEnviar').addEventListener('click', () => enviar(true));
 $('btnSemLocal').addEventListener('click', () => enviar(false));
 
+// ---------- selo de boa ação (o tutor agradece pela plataforma) ----------
+let meuAutor = null, esperaSelo = null;
+async function mostrarSelo() {
+  if (!meuAutor) return;
+  await iniciarSelos();
+  let lista = [];
+  try { lista = (await reconhecimentosDe([meuAutor]))[meuAutor] || []; } catch (err) { console.error('selos', err); return; }
+  const daqui = lista.find((r) => r.pet === pet && r.origem === 'encontro');
+  const caixa = $('seloAchador');
+  if (!daqui) {
+    // o tutor costuma agradecer logo depois de encerrar: confere de novo em 30 s
+    clearTimeout(esperaSelo); esperaSelo = setTimeout(mostrarSelo, 30000);
+    caixa.hidden = true;
+    return;
+  }
+  const info = calcularSelos(lista);
+  const selo = daqui.tipo === 'devolveu' ? seloPorId('anjo') : info.principal || seloPorId('olhar');
+  caixa.className = 'qr-selo selo-' + selo.id;
+  caixa.innerHTML = '';
+  const disco = document.createElement('span'); disco.className = 'selo-disco';
+  disco.innerHTML = `<svg aria-hidden="true"><use href="#${selo.icone}"/></svg>`;
+  const txt = document.createElement('div');
+  const t1 = document.createElement('p'); t1.innerHTML = '<b></b>';
+  t1.firstChild.textContent = daqui.tipo === 'devolveu'
+    ? `O tutor agradeceu por você devolver ${perfil.nome}: você ganhou o selo ${selo.nome}.`
+    : `O tutor agradeceu a sua ajuda: selo ${selo.nome}.`;
+  const t2 = document.createElement('p'); t2.className = 'dica';
+  t2.textContent = info.principal && info.principal.id !== selo.id
+    ? `Seu selo principal é ${info.principal.nome} (${info.familias} famílias ajudadas).`
+    : 'Os vizinhos veem o selo ao lado do seu apelido na rede de alerta do bairro.';
+  const t3 = document.createElement('p'); t3.className = 'dica';
+  t3.innerHTML = 'Para guardar o selo, <a href="bairro.html">entre na rede do bairro</a> e crie a sua conta neste mesmo celular.';
+  txt.append(t1, t2, t3);
+  caixa.append(disco, txt);
+  caixa.hidden = false;
+}
+aoMudarSelos(() => { if (meuAutor) mostrarSelo(); });
+
 // ---------- conversa com o tutor ----------
 let pararDeOuvir = null;
 function abrirConversa(id) {
@@ -174,6 +213,8 @@ function mostrarConversa(enc) {
     : 'O tutor foi avisado.';
   $('formResposta').hidden = resolvido;
   $('btnAtualizarLocal').hidden = resolvido;
+  meuAutor = enc.autor || null;
+  if (resolvido) mostrarSelo(); else $('seloAchador').hidden = true;
 
   const ul = $('mensagens');
   ul.replaceChildren();

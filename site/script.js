@@ -16,6 +16,10 @@ import {
   MAX_CANTOS, ehPoligono, limiteArea, escalaArea, areaM2, completar, normalizarArea, paraFirestore, mesmaArea,
   retangulo, meioDoLado, validarArea
 } from './area.js';
+import {
+  SELOS, iniciarSelos, calcularSelos, reconhecimentosDe, selosDe, seloChip, seloMedalha, reconhecer, retirarReconhecimento,
+  reconhecimentosQueDei, idReconhecimento, aoMudarSelos, meuUidSelos, simularSelosRecebidos, ACHADOR_SIMULACAO
+} from './selos.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -999,6 +1003,11 @@ document.querySelectorAll('[data-sim]').forEach((b) => b.addEventListener('click
     mostrarAviso('Simulando batimento acima do normal em repouso por ~25 s', 'Ver saúde', () => irPara('saude', true), 6000);
   }
   if (acao === 'historico') await gerarHistoricoExemplo();
+  if (acao === 'selos') {
+    if (simularSelosRecebidos(3, true)) mostrarAviso('Três famílias agradeceram você (uma pela devolução).', 'Ver selos', () => irPara('ajustes', true), 7000);
+    else mostrarAviso('Com o Firebase configurado, os selos vêm de agradecimentos reais de outros tutores.', null, null, 6000);
+    return;
+  }
   if (acao === 'vizinhos') {
     if (!comunidade?.membro()) { mostrarAviso('Primeiro entre na rede do bairro.', 'Abrir a rede', () => irPara('comunidade', true), 6000); return; }
     if (!comunidade.alertaAtivo()) { mostrarAviso(`Ative o modo perdido e publique o alerta de ${nomePet()} no bairro.`, 'Abrir a rede', () => irPara('comunidade', true), 6000); return; }
@@ -1307,8 +1316,12 @@ async function marcarEncontrado() {
     }
     if (estavaPerdido || perfil.encontrado) await definirPerdido(false, abertos[0]);
     else { aplicarPerfil(); }
-    mostrarAviso(`${nomePet()} marcado como encontrado.`, estavaPerdido && !abertos.length ? 'Desfazer' : null,
-      estavaPerdido && !abertos.length ? () => definirPerdido(true).catch(falhaPerdido) : null);
+    if (abertos.length) {
+      mostrarAviso(`${nomePet()} marcado como encontrado. Que tal agradecer quem ajudou?`, 'Agradecer', () => irPara('perdido', true), 8000);
+    } else {
+      mostrarAviso(`${nomePet()} marcado como encontrado.`, estavaPerdido ? 'Desfazer' : null,
+        estavaPerdido ? () => definirPerdido(true).catch(falhaPerdido) : null);
+    }
   } catch (err) { falhaPerdido(err); }
 }
 function falhaPerdido(err) { console.error(err); mostrarAviso('Não foi possível mudar o modo perdido: ' + err.message, null, null, 6000); }
@@ -1492,9 +1505,12 @@ function cartaoEncontro(enc, compacto) {
   const nome = enc.achador?.nome || 'Pessoa que encontrou';
   quem.append(el('b', null, nome));
   if (enc.achador?.telefone) quem.append(document.createTextNode(', ' + telefoneBonito(enc.achador.telefone)));
+  const autor = autorEncontro(enc);
+  if (autor && selosAchadores[autor]?.principal) quem.insertAdjacentHTML('beforeend', seloChip(selosAchadores[autor]));
   info.append(quem);
   corpo.append(info);
   c.append(corpo);
+  if (enc.status === 'resolvido' && autor) c.append(blocoReconhecer(enc, nome, autor));
 
   const acoes = el('div', 'encontro-acoes');
   if (enc.lat && enc.lng) {
@@ -1556,7 +1572,96 @@ async function enviarResposta(id, texto, novoStatus) {
 
 function petRecuperado() { return marcarEncontrado(); }
 
+// ============================================================ selos de boa ação
+// O tutor agradece quem achou o pet; as regras do Firestore conferem que a pessoa é a autora do encontro.
+const autorEncontro = (enc) => enc.autor || (db ? null : ACHADOR_SIMULACAO);
+const selosAchadores = {};            // uid -> resumo dos selos (de quem avisou pelo QR)
+let reconhecimentosDados = new Map(); // id -> tipo ('devolveu' | 'ajudou') que este tutor já deu
+let pedidosSelos = new Set();
+
+async function carregarReconhecimentosDados() {
+  try { reconhecimentosDados = new Map((await reconhecimentosQueDei(PET_ID)).map((r) => [r.id, r.tipo])); }
+  catch (err) { console.error('selos', err); }
+  renderEncontros();
+}
+function pedirSelosAchadores() {
+  const uids = [...new Set(encontros.map(autorEncontro).filter(Boolean))].filter((u) => !pedidosSelos.has(u));
+  if (!uids.length) return;
+  uids.forEach((u) => pedidosSelos.add(u));
+  selosDe(uids).then((r) => { Object.assign(selosAchadores, r); renderEncontros(); }).catch((err) => console.error('selos', err));
+}
+
+function blocoReconhecer(enc, nome, autor) {
+  const caixa = el('div', 'reconhecer');
+  const id = idReconhecimento(PET_ID, 'encontro', enc.id), dado = reconhecimentosDados.get(id);
+  if (dado) {
+    const linha = el('div', 'bz-linha');
+    const ok = el('span', 'bz-agradecido');
+    ok.append(iconeSvg('i-check'), document.createTextNode(dado === 'devolveu'
+      ? `Você agradeceu: ${nome} devolveu ${nomePet()}`
+      : `Você agradeceu: ${nome} ajudou`));
+    const desfazer = el('button', 'link-botao', 'Desfazer'); desfazer.type = 'button';
+    desfazer.addEventListener('click', async () => {
+      try { await retirarReconhecimento(id, autor); reconhecimentosDados.delete(id); delete selosAchadores[autor]; pedidosSelos.delete(autor); }
+      catch (err) { mostrarAviso('Não foi possível desfazer: ' + err.message, null, null, 6000); }
+      pedirSelosAchadores(); renderEncontros();
+    });
+    linha.append(ok, desfazer);
+    caixa.append(linha);
+    return caixa;
+  }
+  caixa.append(el('p', null, `Agradeça ${nome}. O agradecimento vira um selo de boa ação que os vizinhos veem na plataforma.`));
+  const linha = el('div', 'bz-linha');
+  const opcao = (tipo, texto, icone) => {
+    const b = el('button', 'pilula ' + (tipo === 'devolveu' ? 'primario' : 'leve')); b.type = 'button';
+    b.append(iconeSvg(icone), document.createTextNode(texto));
+    b.addEventListener('click', async () => {
+      b.disabled = true;
+      try {
+        await reconhecer({ pet: PET_ID, origem: 'encontro', origemId: enc.id, para: autor, tipo });
+        reconhecimentosDados.set(id, tipo);
+        delete selosAchadores[autor]; pedidosSelos.delete(autor);
+        mostrarAviso(tipo === 'devolveu' ? `${nome} ganhou o selo Anjo dos Pets. Obrigado por agradecer!` : `Agradecimento enviado para ${nome}.`, null, null, 5000);
+      } catch (err) { console.error(err); mostrarAviso('Não foi possível agradecer: ' + err.message, null, null, 6000); b.disabled = false; }
+      pedirSelosAchadores(); renderEncontros();
+    });
+    return b;
+  };
+  linha.append(opcao('devolveu', `Devolveu ${nomePet()}`, 'i-selo-anjo'), opcao('ajudou', 'Ajudou a encontrar', 'i-coracao'));
+  caixa.append(linha);
+  return caixa;
+}
+
+// cartão "Seus selos" (Configurações): o que a própria pessoa ganhou ajudando outros pets
+let selosVistos = null;
+async function renderMeusSelos() {
+  const uid = meuUidSelos();
+  if (!uid) return;
+  let lista = [];
+  try { lista = (await reconhecimentosDe([uid]))[uid] || []; } catch (err) { console.error('selos', err); }
+  const info = calcularSelos(lista);
+  const novos = selosVistos ? info.conquistados.filter((x) => !selosVistos.includes(x)) : [];
+  selosVistos = info.conquistados;
+  $('listaSelos').innerHTML = SELOS.map((s) => seloMedalha(s, info.tem[s.id],
+    info.tem[s.id] ? s.criterio : s.comoGanhar)).join('');
+  novos.forEach((id) => $('listaSelos').querySelector('.selo-' + id)?.classList.add('chegou'));
+  const p = $('progressoSelos');
+  if (!info.ajudas) {
+    p.innerHTML = 'Você ainda não recebeu agradecimentos. Entre na <a href="#comunidade" data-ir="comunidade">rede do bairro</a> para ajudar quando um pet sumir perto de você.';
+  } else {
+    const prox = info.proximo;
+    const pct = prox ? Math.round((info.familias / prox.selo.meta) * 100) : 100;
+    p.innerHTML = `${info.ajudas} ${info.ajudas === 1 ? 'agradecimento' : 'agradecimentos'} de ${info.familias} ${info.familias === 1 ? 'família' : 'famílias'}.`
+      + (info.principal ? ` Os vizinhos veem você como <b>${info.principal.nome}</b>.` : '')
+      + (prox ? `<br>Próximo selo: ${prox.selo.nome} (falta${prox.falta === 1 ? '' : 'm'} ${prox.falta} ${prox.falta === 1 ? 'família' : 'famílias'}).<div class="selo-barra"><span style="width:${pct}%"></span></div>` : '<br>Você tem todos os selos. Obrigado!');
+  }
+  p.querySelector('[data-ir]')?.addEventListener('click', (ev) => { ev.preventDefault(); irPara('comunidade', true); });
+  novos.forEach((id) => mostrarAviso(`Você ganhou o selo ${SELOS.find((s) => s.id === id).nome}!`, 'Ver', () => irPara('ajustes', true), 6000));
+}
+aoMudarSelos(() => { pedidosSelos = new Set(); Object.keys(selosAchadores).forEach((k) => delete selosAchadores[k]); carregarReconhecimentosDados(); pedirSelosAchadores(); renderMeusSelos(); });
+
 function renderEncontros() {
+  pedirSelosAchadores();
   // guarda o que o tutor estava digitando para não perder ao atualizar
   const rascunhos = {};
   document.querySelectorAll('input[data-resposta]').forEach((i) => { if (i.value) rascunhos[i.dataset.resposta] = i.value; });
@@ -1798,6 +1903,7 @@ async function conectarFirebase() {
   mostrarVinculo(acesso.coleira);
   carregarTutor(); carregarFicha();
   iniciarEncontros().then(() => ouvirEncontros((lista) => { encontros = lista; renderEncontros(); }));
+  iniciarSelos().then(() => { carregarReconhecimentosDados(); renderMeusSelos(); });
   iniciarComunidadePainel();
 
   fs.onSnapshot(fs.doc(db, 'perfis', PET_ID), (snap) => {
@@ -1849,6 +1955,7 @@ if (!configurado) {
   carregarSaudeLocal();
   carregarTutor(); carregarFicha();
   iniciarEncontros().then(() => ouvirEncontros((lista) => { encontros = lista; renderEncontros(); }));
+  iniciarSelos().then(() => { carregarReconhecimentosDados(); renderMeusSelos(); });
   iniciarComunidadePainel();
 }
 irPara(location.hash.slice(1) || 'inicio');
